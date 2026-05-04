@@ -1,827 +1,683 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8"/>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Nexus Studio</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com"/>
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
-  <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600&display=swap" rel="stylesheet"/>
-  <style>
-    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-    :root{
-      --ink:#0f0f0f;--ink-soft:#555;--cream:#f9f6f1;--white:#fff;
-      --accent:#c8ff00;--accent-dark:#9fcb00;--border:rgba(15,15,15,.1);
-      --serif:'Instrument Serif',Georgia,serif;--sans:'DM Sans',sans-serif;
-    }
-    html{scroll-behavior:smooth}
-    body{font-family:var(--sans);background:var(--cream);color:var(--ink);overflow-x:hidden}
+from reportlab.lib.pagesizes import A4
+from reportlab.lib import colors
+from reportlab.lib.units import cm
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib.enums import TA_LEFT, TA_CENTER, TA_JUSTIFY
+from reportlab.platypus import (
+    SimpleDocTemplate, Paragraph, Spacer, HRFlowable, PageBreak,
+    Table, TableStyle, KeepTogether
+)
+from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfbase.ttfonts import TTFont
+from reportlab.lib.colors import HexColor
 
-    /* NAV */
-    nav{position:fixed;top:0;left:0;right:0;z-index:200;display:flex;align-items:center;justify-content:space-between;padding:1.1rem 2.5rem;background:rgba(249,246,241,.92);backdrop-filter:blur(14px);border-bottom:1px solid var(--border);animation:fadeDown .5s ease both}
-    .nav-logo{font-family:var(--serif);font-size:1.3rem;color:var(--ink);text-decoration:none}
-    .nav-links{display:flex;gap:2rem;list-style:none}
-    .nav-links a{font-size:.85rem;color:var(--ink-soft);text-decoration:none;transition:color .2s}
-    .nav-links a:hover{color:var(--ink)}
-    .nav-wa{display:flex;align-items:center;gap:.45rem;background:#25d366;color:#fff;padding:.5rem 1.2rem;border-radius:100px;font-size:.85rem;font-weight:600;text-decoration:none;transition:transform .2s,box-shadow .2s}
-    .nav-wa:hover{transform:translateY(-2px);box-shadow:0 6px 20px rgba(37,211,102,.3)}
+# ── Register DejaVu fonts (support Italian accents: à è é ì ò ù) ───────────
+BASE = "/usr/share/fonts/truetype/dejavu/"
+pdfmetrics.registerFont(TTFont("DJV",     BASE + "DejaVuSerif.ttf"))
+pdfmetrics.registerFont(TTFont("DJV-B",   BASE + "DejaVuSerif-Bold.ttf"))
+pdfmetrics.registerFont(TTFont("DJV-I",   BASE + "DejaVuSerif-Italic.ttf"))
+pdfmetrics.registerFont(TTFont("DJV-BI",  BASE + "DejaVuSerif-BoldItalic.ttf"))
+pdfmetrics.registerFont(TTFont("DJV-S",   BASE + "DejaVuSans.ttf"))
+pdfmetrics.registerFont(TTFont("DJV-SB",  BASE + "DejaVuSans-Bold.ttf"))
+pdfmetrics.registerFont(TTFont("DJV-SI",  BASE + "DejaVuSans-Oblique.ttf"))
+pdfmetrics.registerFont(TTFont("DJV-SBI", BASE + "DejaVuSans-BoldOblique.ttf"))
 
-    /* LANG BAR */
-    .lang-bar{position:fixed;top:66px;right:1.5rem;z-index:199;display:flex;gap:.3rem;animation:fadeDown .5s .1s ease both}
-    .lang-btn{background:var(--white);border:1px solid var(--border);border-radius:100px;padding:.22rem .6rem;font-size:.7rem;font-weight:600;cursor:pointer;color:var(--ink-soft);transition:all .2s}
-    .lang-btn.active,.lang-btn:hover{background:var(--ink);color:var(--cream);border-color:var(--ink)}
+# ── Colours ──────────────────────────────────────────────────────────────────
+DEEP_NAVY   = HexColor("#1A2340")
+GOLD        = HexColor("#C9A84C")
+LIGHT_GOLD  = HexColor("#F0D9A0")
+CREAM       = HexColor("#FAF7F2")
+DARK_TEXT   = HexColor("#1C1C1C")
+MID_GREY    = HexColor("#5A5A5A")
+ACCENT_LINE = HexColor("#8B6914")
+SECTION_BG  = HexColor("#F2EDE4")
+QUOTE_BG    = HexColor("#EDE8DF")
+W, H = A4
 
-    /* HERO */
-    .hero{min-height:100vh;display:flex;flex-direction:column;justify-content:center;padding:8rem 2.5rem 4rem;position:relative;overflow:hidden}
-    .hero-glow{position:absolute;top:-100px;right:-100px;width:480px;height:480px;border-radius:50%;background:radial-gradient(circle,var(--accent) 0%,transparent 68%);opacity:.3;pointer-events:none;animation:pulse 7s ease-in-out infinite}
-    .hero-badge{display:inline-flex;align-items:center;gap:.4rem;font-size:.75rem;font-weight:500;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-soft);border:1px solid var(--border);padding:.3rem .85rem;border-radius:100px;margin-bottom:1.75rem;animation:fadeUp .6s .1s ease both;width:fit-content}
-    .hero-badge span{width:6px;height:6px;border-radius:50%;background:var(--accent-dark)}
-    .hero-title{font-family:var(--serif);font-size:clamp(2.8rem,7vw,6rem);line-height:1.07;letter-spacing:-.025em;max-width:780px;animation:fadeUp .6s .2s ease both}
-    .hero-title em{font-style:italic;color:var(--ink-soft)}
-    .hero-sub{margin-top:1.5rem;font-size:1.05rem;color:var(--ink-soft);font-weight:300;max-width:460px;line-height:1.75;animation:fadeUp .6s .3s ease both}
-    .hero-actions{display:flex;align-items:center;gap:1.25rem;margin-top:2.5rem;flex-wrap:wrap;animation:fadeUp .6s .4s ease both}
-    .btn-primary{display:inline-flex;align-items:center;gap:.5rem;background:var(--ink);color:var(--cream);padding:.8rem 1.9rem;border-radius:100px;font-size:.95rem;font-weight:500;text-decoration:none;transition:transform .2s,box-shadow .2s}
-    .btn-primary:hover{transform:translateY(-2px);box-shadow:0 8px 24px rgba(15,15,15,.18)}
-    .btn-wa{display:inline-flex;align-items:center;gap:.5rem;background:#25d366;color:#fff;padding:.8rem 1.9rem;border-radius:100px;font-size:.95rem;font-weight:600;text-decoration:none;transition:transform .2s,box-shadow .2s}
-    .btn-wa:hover{transform:translateY(-2px);box-shadow:0 8px 24px rgba(37,211,102,.3)}
-    .hero-stats{display:flex;gap:2.5rem;margin-top:4.5rem;padding-top:2rem;border-top:1px solid var(--border);flex-wrap:wrap;animation:fadeUp .6s .5s ease both}
-    .stat-num{font-family:var(--serif);font-size:2.2rem;letter-spacing:-.03em;line-height:1}
-    .stat-lbl{font-size:.78rem;color:var(--ink-soft);margin-top:.25rem}
+# ── Page canvas callback ─────────────────────────────────────────────────────
+def on_page(c, doc):
+    c.saveState()
+    c.setFillColor(DEEP_NAVY)
+    c.rect(0, H - 1.05*cm, W, 1.05*cm, fill=1, stroke=0)
+    c.setFillColor(GOLD)
+    c.setFont("DJV-SB", 8)
+    c.drawString(2*cm, H - 0.70*cm, "IL FU MATTIA PASCAL  ·  Luigi Pirandello")
+    c.setFont("DJV-S", 8)
+    c.drawRightString(W - 2*cm, H - 0.70*cm, f"Pagina {doc.page}")
+    c.setStrokeColor(GOLD)
+    c.setLineWidth(0.7)
+    c.line(2*cm, 1.25*cm, W - 2*cm, 1.25*cm)
+    c.setFillColor(MID_GREY)
+    c.setFont("DJV-SI", 7)
+    c.drawCentredString(W/2, 0.72*cm, "Portfolio Analitico  ·  Mattia Pascal e Luigi Pirandello")
+    c.restoreState()
 
-    /* MARQUEE */
-    .marquee-wrap{overflow:hidden;background:var(--ink);padding:.8rem 0}
-    .marquee-track{display:flex;gap:2.5rem;width:max-content;animation:marquee 20s linear infinite}
-    .marquee-item{font-family:var(--serif);font-style:italic;font-size:1rem;color:rgba(249,246,241,.55);white-space:nowrap}
-    .marquee-dot{color:var(--accent)}
+# ── Styles ───────────────────────────────────────────────────────────────────
+def S(name, **kw):
+    return ParagraphStyle(name, **kw)
 
-    /* SECTION SHARED */
-    section{padding:5.5rem 2.5rem}
-    .s-label{font-size:.72rem;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-soft);margin-bottom:.85rem}
-    .s-title{font-family:var(--serif);font-size:clamp(1.9rem,4vw,3rem);letter-spacing:-.02em;line-height:1.15;max-width:640px}
-    .s-title em{font-style:italic;color:var(--ink-soft)}
+T_TITLE  = S("ttitle",  fontName="DJV-B",  fontSize=32, leading=38,
+              textColor=CREAM,      alignment=TA_CENTER, spaceAfter=8)
+T_SUB    = S("tsub",    fontName="DJV-I",  fontSize=14, leading=18,
+              textColor=LIGHT_GOLD, alignment=TA_CENTER, spaceAfter=4)
+T_AUTH   = S("tauth",   fontName="DJV-S",  fontSize=10, leading=13,
+              textColor=LIGHT_GOLD, alignment=TA_CENTER)
 
-    /* SERVICES */
-    .services{background:var(--white)}
-    .svc-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:1.5px;margin-top:3rem;border:1.5px solid var(--border);border-radius:20px;overflow:hidden}
-    .svc-card{padding:2.25rem;background:var(--white);transition:background .25s}
-    .svc-card:hover{background:var(--cream)}
-    .svc-icon{width:42px;height:42px;border-radius:11px;background:var(--cream);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:1.2rem;margin-bottom:1.25rem;transition:background .25s}
-    .svc-card:hover .svc-icon{background:var(--accent)}
-    .svc-name{font-family:var(--serif);font-size:1.2rem;margin-bottom:.55rem}
-    .svc-desc{font-size:.875rem;color:var(--ink-soft);line-height:1.65}
+S_NUM    = S("snum",    fontName="DJV-SB", fontSize=8,  textColor=GOLD, spaceAfter=0)
+S_HEAD   = S("shead",   fontName="DJV-B",  fontSize=15, leading=19,
+              textColor=DEEP_NAVY,  spaceBefore=6, spaceAfter=4)
+SH_HEAD  = S("shhead",  fontName="DJV-B",  fontSize=11, leading=14,
+              textColor=ACCENT_LINE, spaceBefore=10, spaceAfter=4)
+BODY     = S("body",    fontName="DJV",    fontSize=10, leading=15.5,
+              textColor=DARK_TEXT,  alignment=TA_JUSTIFY, spaceAfter=7)
+QUOT     = S("quot",    fontName="DJV-I",  fontSize=10, leading=15,
+              textColor=HexColor("#3D2B00"), alignment=TA_JUSTIFY,
+              leftIndent=18, rightIndent=18, spaceAfter=4, spaceBefore=4)
+QUOT_SRC = S("qsrc",    fontName="DJV-S",  fontSize=8.5, leading=11,
+              textColor=MID_GREY,   leftIndent=18, spaceAfter=8)
+TOC_S    = S("tocs",    fontName="DJV",    fontSize=11, leading=17, textColor=DARK_TEXT)
+TOC_N    = S("tocn",    fontName="DJV-B",  fontSize=11, leading=17, textColor=DEEP_NAVY)
 
-    /* PRICING */
-    .pricing{background:var(--cream)}
-    .price-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:1.25rem;margin-top:3rem}
-    .plan{padding:2rem;border-radius:20px;border:1px solid var(--border);background:var(--white);position:relative;transition:transform .2s,box-shadow .2s;display:flex;flex-direction:column}
-    .plan:hover{transform:translateY(-4px);box-shadow:0 14px 36px rgba(15,15,15,.08)}
-    .plan.featured{background:var(--ink);color:var(--cream);border-color:var(--ink)}
-    .plan-badge{position:absolute;top:-11px;left:50%;transform:translateX(-50%);background:var(--accent);color:var(--ink);font-size:.68rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;padding:.28rem .8rem;border-radius:100px;white-space:nowrap}
-    .plan-name{font-size:.75rem;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-soft)}
-    .plan.featured .plan-name{color:rgba(249,246,241,.5)}
-    .plan-price{font-family:var(--serif);font-size:2.6rem;letter-spacing:-.03em;line-height:1;margin:.6rem 0 .2rem}
-    .plan-freq{font-size:.82rem;color:var(--ink-soft);font-weight:600;background:rgba(15,15,15,.06);display:inline-block;padding:.2rem .65rem;border-radius:100px;margin-top:.25rem}
-    .plan.featured .plan-freq{color:rgba(249,246,241,.7);background:rgba(255,255,255,.1)}
-    .plan-delivery{font-size:.75rem;color:var(--ink-soft);margin-top:.45rem;font-weight:500}
-    .plan.featured .plan-delivery{color:rgba(249,246,241,.5)}
-    hr.pd{border:none;border-top:1px solid var(--border);margin:1.25rem 0}
-    .plan.featured hr.pd{border-color:rgba(255,255,255,.12)}
-    .plan-features{list-style:none;display:flex;flex-direction:column;gap:.6rem;flex:1}
-    .plan-features li{font-size:.85rem;color:var(--ink-soft);display:flex;gap:.5rem;align-items:flex-start}
-    .plan.featured .plan-features li{color:rgba(249,246,241,.75)}
-    .plan-features li::before{content:'✓';color:var(--accent-dark);font-weight:700;flex-shrink:0}
-    .plan.featured .plan-features li::before{color:var(--accent)}
+# ── Helpers ───────────────────────────────────────────────────────────────────
+def hr(col=GOLD, w=1.0):
+    return HRFlowable(width="100%", thickness=w, color=col, spaceAfter=8, spaceBefore=4)
 
-    /* PLAN BUTTONS — two per plan */
-    .plan-btns{display:flex;flex-direction:column;gap:.55rem;margin-top:1.6rem}
-    .plan-btn{display:flex;align-items:center;justify-content:center;gap:.4rem;text-align:center;padding:.72rem 1rem;border-radius:100px;font-size:.82rem;font-weight:600;text-decoration:none;cursor:pointer;border:none;width:100%;transition:opacity .2s,transform .15s;font-family:var(--sans)}
-    .plan-btn:hover{opacity:.86;transform:translateY(-1px)}
-    .plan-btn-wa{background:#25d366;color:#fff}
-    .plan-btn-solid{background:var(--accent);color:var(--ink)}
-    .plan-btn-iban{background:transparent;border:1.5px solid rgba(15,15,15,.18)!important;color:var(--ink)}
-    .plan.featured .plan-btn-iban{border-color:rgba(255,255,255,.3)!important;color:var(--cream)}
+def sec_header(num, title):
+    return [
+        Spacer(1, 0.35*cm),
+        hr(GOLD, 1.3),
+        Paragraph(f"Sezione {num}", S_NUM),
+        Paragraph(title, S_HEAD),
+        hr(SECTION_BG, 3),
+        Spacer(1, 0.12*cm),
+    ]
 
-    /* MODAL */
-    .modal-overlay{display:none;position:fixed;inset:0;background:rgba(10,10,10,.65);z-index:999;align-items:center;justify-content:center;padding:1.5rem;backdrop-filter:blur(4px)}
-    .modal-overlay.open{display:flex}
-    .modal{background:var(--white);border-radius:24px;padding:2.25rem;max-width:420px;width:100%;position:relative;animation:fadeUp .3s ease}
-    .modal-close{position:absolute;top:1rem;right:1rem;background:var(--cream);border:none;width:32px;height:32px;border-radius:50%;cursor:pointer;font-size:1.1rem;display:flex;align-items:center;justify-content:center;color:var(--ink-soft);transition:background .2s}
-    .modal-close:hover{background:#e8e4de}
-    .modal-step{font-size:.7rem;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-soft);margin-bottom:.5rem}
-    .modal-title{font-family:var(--serif);font-size:1.6rem;line-height:1.15;margin-bottom:.3rem}
-    .modal-pkg{font-size:.85rem;color:var(--ink-soft);margin-bottom:1.5rem}
-    .modal-pkg strong{color:var(--ink);font-weight:600}
-    .iban-label{font-size:.72rem;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--ink-soft);margin-bottom:.4rem}
-    .iban-box{background:var(--cream);border:1px solid var(--border);border-radius:12px;padding:.9rem 1.1rem;display:flex;align-items:center;justify-content:space-between;gap:.75rem;margin-bottom:.75rem}
-    .iban-code{font-family:monospace;font-size:.9rem;font-weight:700;letter-spacing:.03em;color:var(--ink);word-break:break-all}
-    .copy-btn{flex-shrink:0;background:var(--ink);color:var(--cream);border:none;border-radius:8px;padding:.4rem .85rem;font-size:.75rem;font-weight:600;cursor:pointer;transition:background .2s;font-family:var(--sans)}
-    .copy-btn:hover{background:#2a2a2a}
-    .copy-btn.copied{background:var(--accent-dark);color:#fff}
-    .modal-instructions{font-size:.82rem;color:var(--ink-soft);line-height:1.65;margin-bottom:1.5rem;padding:.85rem 1rem;background:#fef9ee;border:1px solid #f0e8c8;border-radius:10px}
-    .modal-instructions b{color:var(--ink)}
-    .modal-divider{display:flex;align-items:center;gap:.75rem;margin:.75rem 0;font-size:.75rem;color:var(--ink-soft)}
-    .modal-divider::before,.modal-divider::after{content:'';flex:1;height:1px;background:var(--border)}
-    /* Step 2: confirm button */
-    .modal-confirm-btn{display:flex;align-items:center;justify-content:center;gap:.5rem;width:100%;background:#25d366;color:#fff;border:none;border-radius:100px;padding:.9rem;font-size:.9rem;font-weight:600;cursor:pointer;font-family:var(--sans);transition:opacity .2s,transform .15s;text-decoration:none}
-    .modal-confirm-btn:hover{opacity:.88;transform:translateY(-1px)}
-    .modal-note{font-size:.75rem;color:var(--ink-soft);text-align:center;margin-top:.75rem;line-height:1.5}
+def qblock(text, src=""):
+    r = [Paragraph(f"\u201c{text}\u201d", QUOT)]
+    if src:
+        r.append(Paragraph(f"\u2014 {src}", QUOT_SRC))
+    return r
 
-    /* AI */
-    .ai-sec{background:var(--ink);color:var(--cream);display:grid;grid-template-columns:1fr 1fr;gap:4rem;align-items:center;padding:5.5rem 2.5rem}
-    .ai-sec .s-label{color:var(--accent)}
-    .ai-sec .s-title{color:var(--cream)}
-    .ai-sec .s-title em{color:var(--accent)}
-    .ai-desc{font-size:.95rem;color:rgba(249,246,241,.6);line-height:1.75;margin-top:1.25rem}
-    .ai-list{list-style:none;margin-top:1.75rem;display:flex;flex-direction:column;gap:.8rem}
-    .ai-list li{display:flex;align-items:flex-start;gap:.7rem;font-size:.875rem;color:rgba(249,246,241,.8)}
-    .ai-list li::before{content:'';flex-shrink:0;width:18px;height:18px;margin-top:1px;border-radius:50%;background:var(--accent) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='8' viewBox='0 0 10 8'%3E%3Cpath d='M1 4l2.5 2.5L9 1' stroke='%230f0f0f' stroke-width='1.5' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") no-repeat center}
-    .chat-demo{background:#1a1a1a;border-radius:18px;padding:1.5rem;border:1px solid rgba(255,255,255,.08)}
-    .chat-hdr{display:flex;align-items:center;gap:.7rem;margin-bottom:1.25rem;padding-bottom:1rem;border-bottom:1px solid rgba(255,255,255,.08)}
-    .chat-av{width:30px;height:30px;border-radius:50%;background:var(--accent);display:flex;align-items:center;justify-content:center;font-size:.8rem}
-    .chat-nm{font-size:.82rem;font-weight:500}
-    .chat-st{font-size:.72rem;color:rgba(249,246,241,.4)}
-    .chat-st b{color:#4ade80;font-weight:400}
-    .msgs{display:flex;flex-direction:column;gap:.75rem}
-    .msg{font-size:.82rem;line-height:1.5;padding:.65rem .9rem;border-radius:13px;max-width:90%}
-    .msg-b{background:rgba(255,255,255,.07);color:rgba(249,246,241,.85);border-bottom-left-radius:3px}
-    .msg-u{background:var(--accent);color:var(--ink);border-bottom-right-radius:3px;align-self:flex-end}
-    .typing{display:flex;gap:.3rem;padding:.55rem .9rem;border-radius:13px;border-bottom-left-radius:3px;background:rgba(255,255,255,.07);width:fit-content}
-    .dot{width:5px;height:5px;border-radius:50%;background:rgba(249,246,241,.4)}
-    .dot:nth-child(1){animation:blink 1.2s 0s infinite}
-    .dot:nth-child(2){animation:blink 1.2s .2s infinite}
-    .dot:nth-child(3){animation:blink 1.2s .4s infinite}
+def evc(text):
+    inner_h = S("ih", fontName="DJV-SB", fontSize=8,  textColor=GOLD)
+    inner_b = S("ib", fontName="DJV",    fontSize=9.5, leading=14,
+                textColor=DARK_TEXT, alignment=TA_JUSTIFY)
+    label = Paragraph("\u25c6 ANALISI CRITICA E VALUTAZIONE", inner_h)
+    body  = Paragraph(text, inner_b)
+    t = Table([[label], [body]],
+              colWidths=[W - 4*cm - 2*1.5*cm])
+    t.setStyle(TableStyle([
+        ("BACKGROUND",   (0,0),(-1,-1), HexColor("#EAE2D2")),
+        ("BOX",          (0,0),(-1,-1), 1.2, GOLD),
+        ("LINEBELOW",    (0,0),(-1,0),  0.8, GOLD),
+        ("TOPPADDING",   (0,0),(-1,-1), 7),
+        ("BOTTOMPADDING",(0,0),(-1,-1), 7),
+        ("LEFTPADDING",  (0,0),(-1,-1), 10),
+        ("RIGHTPADDING", (0,0),(-1,-1), 10),
+    ]))
+    return [Spacer(1,0.18*cm), t, Spacer(1,0.22*cm)]
 
-    /* HOW */
-    .how{background:var(--white)}
-    .steps{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:1.75rem;margin-top:3rem}
-    .step-num{font-family:var(--serif);font-size:3.5rem;color:var(--border);line-height:1;margin-bottom:.6rem;letter-spacing:-.04em}
-    .step-title{font-weight:500;font-size:.95rem;margin-bottom:.4rem}
-    .step-desc{font-size:.85rem;color:var(--ink-soft);line-height:1.65}
+# ════════════════════════════════════════════════════════════════════════════
+#  CONTENT (in Italian)
+# ════════════════════════════════════════════════════════════════════════════
 
-    /* CTA */
-    .cta-sec{background:var(--ink);text-align:center;padding:6rem 2.5rem}
-    .cta-title{font-family:var(--serif);font-size:clamp(2rem,5vw,3.8rem);color:var(--cream);letter-spacing:-.02em;line-height:1.1}
-    .cta-title em{color:var(--accent);font-style:italic}
-    .cta-sub{color:rgba(249,246,241,.45);font-size:.95rem;margin-top:.85rem}
-    .cta-actions{display:flex;align-items:center;justify-content:center;gap:1rem;margin-top:2.25rem;flex-wrap:wrap}
-    .cta-wa{display:inline-flex;align-items:center;gap:.55rem;background:#25d366;color:#fff;padding:.9rem 2rem;border-radius:100px;font-size:.95rem;font-weight:600;text-decoration:none;transition:transform .2s,box-shadow .2s}
-    .cta-wa:hover{transform:translateY(-2px);box-shadow:0 10px 28px rgba(37,211,102,.28)}
-    .cta-ghost{font-size:.9rem;color:rgba(249,246,241,.4);text-decoration:none;border-bottom:1px solid rgba(249,246,241,.15);padding-bottom:2px;transition:color .2s}
-    .cta-ghost:hover{color:var(--cream)}
+sections = [
 
-    /* FOOTER */
-    footer{background:#0a0a0a;color:rgba(249,246,241,.35);padding:2rem 2.5rem;display:flex;align-items:center;justify-content:space-between;border-top:1px solid rgba(255,255,255,.05);font-size:.8rem;flex-wrap:wrap;gap:.75rem}
-    .foot-logo{font-family:var(--serif);font-size:1.05rem;color:var(--cream)}
-    footer a{color:rgba(249,246,241,.35);text-decoration:none}
-    footer a:hover{color:var(--cream)}
+    # ── 1. Bad Faith ─────────────────────────────────────────────────────────
+    {
+        "num": 1,
+        "title": "La Malafede e l\u2019Inautenticit\u00e0",
+        "toc": "La Malafede e l\u2019Inautenticit\u00e0",
+        "subs": [
+            {
+                "h": "Mattia Pascal come personaggio in malafede",
+                "b": (
+                    "All\u2019inizio del romanzo <i>Il fu Mattia Pascal</i> di Pirandello, il protagonista "
+                    "incarna perfettamente ci\u00f2 che Sartre definisce <i>mauvaise foi</i>, ovvero "
+                    "\u2018malafede\u2019. Mattia non si ribella alla vita insoddisfacente che conduce; al "
+                    "contrario, si arrende passivamente ad essa, lasciando che la convenzione sociale e "
+                    "l\u2019aspettativa morale guidino ogni sua scelta. Sposa Romilda non per amore, ma "
+                    "per un senso di obbligo morale scaturito dalla gravidanza di lei: \u2018cominciai a "
+                    "preparare mia madre alla notizia delle mie prossime nozze, ormai inevitabili, per "
+                    "ragioni di coscienza\u2019. Questa confessione rivela il motore della sua malafede: "
+                    "la coscienza e il dovere sociale soffocano la libert\u00e0 personale."
+                ),
+                "quotes": [
+                    ("Mi vidi, in quell\u2019istante, come l\u2019attore di una tragedia pi\u00f9 comica "
+                     "di quanto chiunque avrebbe potuto immaginare.",
+                     "Pirandello, Il fu Mattia Pascal"),
+                ],
+                "evc": (
+                    "Sartre illustra la malafede attraverso la metafora del cameriere che esegue il suo "
+                    "ruolo con precisione esagerata, come se fosse nato per servire. Mattia rispecchia "
+                    "esattamente questa condizione: assume il ruolo di marito, bibliotecario e genero con "
+                    "una rassegnazione che equivale all\u2019autoinganno. La scelta di Pirandello di far "
+                    "descrivere Mattia come \u2018attore\u2019 nella propria vita non \u00e8 solo "
+                    "stilistica \u2014 \u00e8 filosoficamente significativa: segnala che il protagonista "
+                    "ha scambiato la propria autenticit\u00e0 con un\u2019identit\u00e0 recitata."
+                )
+            },
+            {
+                "h": "La routine come prigione esistenziale",
+                "b": (
+                    "La malafede di Mattia si consolida attraverso l\u2019intrappolamento in una routine "
+                    "ripetitiva. Lavora come bibliotecario \u2014 ruolo mai scelto con entusiasmo \u2014 "
+                    "e osserva i propri giorni dissolversi nell\u2019uniformit\u00e0. Il terrore di "
+                    "diventare come il collega anziano Romitelli, che legge ossessivamente solo perch\u00e9 "
+                    "\u2018la biblioteca era fatta per leggere\u2019, rappresenta un momento di lucida "
+                    "autoconsapevolezza: Mattia percepisce l\u2019assurdit\u00e0 di una vita vissuta in "
+                    "conformit\u00e0 a un ruolo imposto dall\u2019esterno. Tuttavia, riconoscere la "
+                    "malafede ed evaderne sono due cose del tutto diverse. Egli rimane intrappolato, "
+                    "usando la metafora del mare \u2014 onde che si ritirano senza sosta, sabbia che "
+                    "scivola tra le dita \u2014 per evocare la monotonia schiacciante di una vita che "
+                    "non ha il coraggio di trasformare."
+                ),
+                "quotes": [
+                    ("La vista del mare mi riempiva di uno stupito sgomento che diventava a poco a poco "
+                     "un\u2019oppressione insopportabile\u2026 \u2018Cos\u00ec, sempre, fino alla morte, "
+                     "senza nessun cambiamento, mai\u2019.",
+                     "Pirandello, Il fu Mattia Pascal"),
+                ],
+                "evc": (
+                    "Questo passaggio \u00e8 tra i pi\u00f9 sartriani dell\u2019intero romanzo. Il mare "
+                    "funziona come correlativo oggettivo della stagnazione esistenziale di Mattia: "
+                    "naturale, ciclico e del tutto indifferente all\u2019agentivit\u00e0 umana. La "
+                    "ripetizione di \u2018sempre\u2026 senza nessun cambiamento, mai\u2019 cattura la "
+                    "permanenza soffocante che Sartre associa alla malafede: il momento in cui un essere "
+                    "libero si \u00e8 ridotto alla prevedibile rigidit\u00e0 di una cosa."
+                )
+            },
+            {
+                "h": "Incolpare gli altri: la malafede proiettata verso l'esterno",
+                "b": (
+                    "Una dimensione pi\u00f9 sottile della malafede di Mattia \u00e8 la sua tendenza "
+                    "abituale a spostare la responsabilit\u00e0 sugli altri. Di fronte ai debiti "
+                    "accumulati dalla famiglia dopo la morte del padre, rifiuta di riconoscere la propria "
+                    "capacit\u00e0 di agire: \u2018Intanto, si andava sempre pi\u00f9 in rovina, e io "
+                    "non potevo fare nulla\u2019. Allo stesso tempo incolpa la madre e la assolve, "
+                    "un gioco psicologico che gli permette di restare passivo pur sentendosi moralmente "
+                    "superiore. Per Sartre, tali manovre sono il segno distintivo della malafede: negare "
+                    "la libert\u00e0 non solo in s\u00e9 stessi, ma, per estensione, anche negli altri."
+                ),
+                "quotes": [],
+                "evc": (
+                    "Il ritratto di Mattia come narratore inaffidabile \u2014 autocommiserante eppure "
+                    "consapevole di s\u00e9 \u2014 aggiunge un ricco strato ironico. Il lettore vede "
+                    "la contraddizione che Mattia stesso non riesce pienamente ad ammettere: \u00e8 un "
+                    "uomo che capisce di essere libero ma rifiuta sistematicamente di agire come tale. "
+                    "Questo divario tra consapevolezza e azione \u00e8 esattamente ci\u00f2 che lo rende "
+                    "un avvincente anti-eroe esistenzialista."
+                )
+            },
+        ]
+    },
 
-    /* ANIMATIONS */
-    @keyframes fadeDown{from{opacity:0;transform:translateY(-10px)}to{opacity:1;transform:none}}
-    @keyframes fadeUp{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:none}}
-    @keyframes marquee{from{transform:translateX(0)}to{transform:translateX(-50%)}}
-    @keyframes pulse{0%,100%{transform:scale(1)}50%{transform:scale(1.07)}}
-    @keyframes blink{0%,80%,100%{opacity:.3}40%{opacity:1}}
+    # ── 2. Angoscia Esistenziale ──────────────────────────────────────────────
+    {
+        "num": 2,
+        "title": "L\u2019Angoscia Esistenziale e l\u2019Assurdo",
+        "toc": "L\u2019Angoscia Esistenziale e l\u2019Assurdo",
+        "subs": [
+            {
+                "h": "L'architettura dell'angoscia di Mattia",
+                "b": (
+                    "L\u2019angoscia esistenziale nel quadro sartriano non \u00e8 semplice infelicit\u00e0: "
+                    "\u00e8 la consapevolezza acuta che il mondo non offre alcun significato "
+                    "pre-stabilito, che i ruoli sociali sono costruzioni arbitrarie. Mattia giunge a "
+                    "questa consapevolezza attraverso la figura di Romitelli, la cui dedizione meccanica "
+                    "alla catalogazione di libri irrilevanti, mentre la morte si avvicina, gli appare come "
+                    "l\u2019apoteosi dell\u2019assurdo. Osservando Romitelli, Mattia sta in realt\u00e0 "
+                    "confrontandosi con un possibile s\u00e9 futuro: un uomo che si \u00e8 consegnato "
+                    "interamente al proprio ruolo e ha dimenticato che la libert\u00e0 era mai stata "
+                    "un\u2019opzione."
+                ),
+                "quotes": [
+                    ("La noia mi aveva roso dentro, e allentato il filo.",
+                     "Pirandello, Il fu Mattia Pascal"),
+                    ("Qualunque cosa, qualunque cosa sarebbe meglio di questa agonia della mente, "
+                     "di questo dolore strisciante che rode e cincischia e accarezza senza mai far "
+                     "abbastanza male.",
+                     "Sartre, A porte chiuse (1944)"),
+                ],
+                "evc": (
+                    "Il parallelismo tra la \u2018noia che rode dall\u2019interno\u2019 di Mattia e i "
+                    "personaggi di Sartre in <i>A porte chiuse</i> \u00e8 notevole. Entrambi gli autori "
+                    "ricorrono a un linguaggio viscerale, quasi corporeo, per descrivere una condizione "
+                    "psicologica \u2014 rodere, corrodere, strisciare \u2014 come se la mancanza di "
+                    "senso fosse un parassita fisico. Questa risonanza intertestuale suggerisce che "
+                    "Pirandello e Sartre stavano esplorando lo stesso territorio: la violenza che il vuoto "
+                    "di senso infligge a una coscienza."
+                )
+            },
+            {
+                "h": "Mattia e Roquentin: una lettura comparativa",
+                "b": (
+                    "Il confronto pi\u00f9 produttivo per comprendere l\u2019angoscia di Mattia \u00e8 "
+                    "quello con Antoine Roquentin, narratore del romanzo sartriano <i>La Nausea</i> "
+                    "(1938). Entrambi i personaggi sperimentano una crescente insoddisfazione per il "
+                    "proprio ruolo professionale \u2014 Mattia in biblioteca, Roquentin nelle sue "
+                    "ricerche storiche \u2014 e sono sopraffatti dalla realizzazione che il mondo esiste "
+                    "senza una ragione particolare. Il loro disagio non \u00e8 situazionale ma "
+                    "ontologico: deriva dal confrontarsi con la pura contingenza dell\u2019esistenza, "
+                    "con il fatto che le cose semplicemente sono, senza scopo o necessit\u00e0."
+                ),
+                "quotes": [
+                    ("Le cose vanno male! Le cose vanno molto male: ce l\u2019ho, il sudiciume, "
+                     "la Nausea.",
+                     "Sartre, La Nausea (1938)"),
+                ],
+                "evc": (
+                    "Pirandello scrisse <i>Il fu Mattia Pascal</i> nel 1904, oltre trent\u2019anni prima "
+                    "che Sartre formalizzasse l\u2019esistenzialismo. La convergenza tra i due testi "
+                    "ha quindi un peso critico significativo: implica che Pirandello stesse esplorando "
+                    "autonomamente temi esistenzialisti, raggiungendo conclusioni simili attraverso "
+                    "mezzi letterari anzi\u00e8 filosofici. Sartre stesso riconobbe questo debito, "
+                    "lodando Pirandello come \u2018il pi\u00f9 attuale dei drammaturghi moderni\u2019."
+                )
+            },
+            {
+                "h": "La perdita come catalizzatore dell'azione",
+                "b": (
+                    "La morte delle due figlie e della madre rappresenta il punto di rottura psicologica "
+                    "in cui l\u2019angoscia diventa troppo intensa per essere soppressa. Le ancore "
+                    "familiari della routine \u2014 il suo ruolo di padre e figlio \u2014 vengono "
+                    "spazzate via, lasciandolo con un senso insopportabile di vuoto: <i>\u2018non "
+                    "potevo pi\u00f9 reggere la noia, o peggio, il disgusto di me stesso\u2026 un "
+                    "impulso improvviso mi aveva fatto fuggire dal paese\u2019</i>. Questa fuga non "
+                    "\u00e8 ancora libert\u00e0 autentica \u2014 \u00e8 reattiva, impulsiva \u2014 "
+                    "ma \u00e8 la prima crepa nel muro della malafede, forzata dal dolore."
+                ),
+                "quotes": [],
+                "evc": (
+                    "Nella letteratura esistenzialista, la perdita estrema funge spesso da evento "
+                    "precipitante che spinge l\u2019eroe fuori dalla malafede. \u00c8 significativo "
+                    "che Pirandello scelga il lutto piuttosto che un momento di illuminazione "
+                    "intellettuale: suggerisce che la libert\u00e0 non viene abbracciata per scelta "
+                    "razionale, ma imposta dall\u2019esperienza vissuta. Questo lo rende una "
+                    "prospettiva pi\u00f9 sfumata e umana rispetto alla teoria pura di Sartre."
+                )
+            },
+        ]
+    },
 
-    @media(max-width:768px){
-      nav{padding:1rem 1.25rem}.nav-links{display:none}
-      .hero,section,.ai-sec,.cta-sec{padding-left:1.25rem;padding-right:1.25rem}
-      .ai-sec{grid-template-columns:1fr;gap:2.5rem}
-      footer{flex-direction:column;text-align:center}
-      .lang-bar{top:60px;right:.75rem}
-    }
-  </style>
-</head>
-<body>
+    # ── 3. Identit\u00e0 e Reinvenzione ─────────────────────────────────────────
+    {
+        "num": 3,
+        "title": "Identit\u00e0, Reinvenzione e Maschera",
+        "toc": "Identit\u00e0, Reinvenzione e Maschera",
+        "subs": [
+            {
+                "h": "La nascita di Adriano Meis",
+                "b": (
+                    "La decisione di Mattia di abbandonare la propria identit\u00e0 e reinventarsi come "
+                    "Adriano Meis \u00e8 la svolta centrale del romanzo. Apparentemente, questa "
+                    "\u00e8 la concretizzazione della libert\u00e0 sartriana: la scelta radicale di "
+                    "ridefinire la propria essenza attraverso l\u2019azione. Tuttavia, Pirandello mostra "
+                    "che si tratta di un\u2019altra forma di malafede. Mattia non abbraccia la "
+                    "responsabilit\u00e0 che la libert\u00e0 comporta; al contrario, usa la sua nuova "
+                    "identit\u00e0 per sfuggirle. Si preoccupa ossessivamente dell\u2019aspetto fisico, "
+                    "si inventa un\u2019infanzia in America e nega ogni legame con il passato."
+                ),
+                "quotes": [
+                    ("Per cominciare, ero andato, poche ore prima di partire, da un barbiere a farmi "
+                     "tagliare la barba: avevo voluto toglierla del tutto, insieme ai baffi.",
+                     "Pirandello, Il fu Mattia Pascal"),
+                ],
+                "evc": (
+                    "La Teoria della Maschera di Pirandello, elaborata anche nei <i>Sei personaggi in "
+                    "cerca d\u2019autore</i>, trova qui la sua pi\u00f9 chiara illustrazione narrativa. "
+                    "La maschera di Adriano Meis non libera Mattia: lo intrappola ulteriormente, poich\u00e9 "
+                    "costruita sulla negazione di ci\u00f2 che \u00e8 stato. Sartre direbbe che una "
+                    "libert\u00e0 esercitata senza responsabilit\u00e0 non \u00e8 vera libert\u00e0 "
+                    "ma un\u2019altra forma di fuga."
+                )
+            },
+            {
+                "h": "Libert\u00e0 senza responsabilit\u00e0: un\u2019illusione",
+                "b": (
+                    "Sartre \u00e8 esplicito in <i>L\u2019esistenzialismo \u00e8 un umanismo</i>: la "
+                    "responsabilit\u00e0 \u00e8 parte integrante della libert\u00e0. Scegliendo come "
+                    "agire, l\u2019individuo crea un\u2019immagine di ci\u00f2 che l\u2019umanit\u00e0 "
+                    "dovrebbe essere. Mattia invece respinge la propria responsabilit\u00e0: fugge dai "
+                    "debiti, abbandona la famiglia, si esclude da qualsiasi legame. Ritiene che la "
+                    "sua buona fortuna consista nell\u2019essere stato liberato dalla moglie, dalla "
+                    "suocera, dai debiti. \u00c8 quindi inconsapevole di questo fattore centrale della "
+                    "libert\u00e0 esistenziale: non si pu\u00f2 essere autenticamente liberi senza "
+                    "riconoscere ed accettare la propria schiacciante responsabilit\u00e0."
+                ),
+                "quotes": [
+                    ("La mia buona fortuna consisteva precisamente in questo: che ero stato liberato "
+                     "di mia moglie, di mia suocera, dei miei debiti e delle umilianti complicazioni "
+                     "della mia prima vita.",
+                     "Pirandello, Il fu Mattia Pascal"),
+                ],
+                "evc": (
+                    "Questo \u00e8 uno dei momenti pi\u00f9 ironici del romanzo. Ci\u00f2 che Mattia "
+                    "celebra come liberazione \u00e8, agli occhi di Sartre, esattamente l\u2019opposto: "
+                    "uno stratagemma per eludere il peso dell\u2019esistenza autentica. La \u2018buona "
+                    "fortuna\u2019 di Mattia \u00e8 in realt\u00e0 la sua condanna a una nuova, "
+                    "pi\u00f9 profonda forma di malafede."
+                )
+            },
+            {
+                "h": "I limiti della nuova vita: la libert\u00e0 come illusione",
+                "b": (
+                    "La vita come Adriano Meis si rivela presto pi\u00f9 limitante della precedente. "
+                    "Mattia non pu\u00f2 comprare casa, non pu\u00f2 avere un cane, non pu\u00f2 "
+                    "denunciare il furto subito senza rivelare la propria falsa identit\u00e0. "
+                    "L\u2019esclusione volontaria dalla struttura sociale lo priva degli stessi "
+                    "strumenti che rendono possibile l\u2019azione libera nel mondo. Pirandello "
+                    "dimostra cos\u00ec che la libert\u00e0 non \u00e8 uno stato assoluto conquistabile "
+                    "attraverso la fuga: \u00e8 sempre mediata dal contesto sociale e relazionale."
+                ),
+                "quotes": [
+                    ("Avevo gi\u00e0 sperimentato come la mia libert\u00e0, che dapprima mi era sembrata "
+                     "illimitata, avesse purtroppo dei limiti\u2026 mi ero anche accorto che poteva "
+                     "pi\u00f9 propriamente chiamarsi solitudine e noia.",
+                     "Pirandello, Il fu Mattia Pascal"),
+                ],
+                "evc": (
+                    "Questo punto \u00e8 dove Pirandello si distacca da Sartre e si avvicina a Simone "
+                    "de Beauvoir. Mentre Sartre proclama la libert\u00e0 assoluta dell\u2019individuo "
+                    "indipendentemente dalle circostanze esterne, de Beauvoir sottolinea che la "
+                    "faticit\u00e0 \u2014 i fatti inescapabili della nostra situazione \u2014 limita "
+                    "concretamente le nostre scelte. Mattia, escluso dalla struttura sociale, lo "
+                    "scopre con dolorosa evidenza."
+                )
+            },
+        ]
+    },
 
-<!-- IBAN PAYMENT MODAL -->
-<div class="modal-overlay" id="ibanModal">
-  <div class="modal">
-    <button class="modal-close" onclick="closeModal()">✕</button>
-    <div class="modal-step" id="modalStep">Step 1 of 2</div>
-    <div class="modal-title" id="modalTitle">Pay via Bank Transfer</div>
-    <div class="modal-pkg" id="modalPkg"></div>
-    <div class="iban-label" id="ibanLabel">IBAN</div>
-    <div class="iban-box">
-      <div class="iban-code">IT28A0503411755000000104454</div>
-      <button class="copy-btn" id="copyBtn" onclick="copyIban()">Copy</button>
-    </div>
-    <div class="modal-instructions" id="modalInstructions">
-      <b>How to pay:</b><br>
-      1. Copy the IBAN above<br>
-      2. Open your banking app and make a transfer<br>
-      3. In the payment reference write the package name<br>
-      4. Click the button below — it will send me a WhatsApp so I know you've paid ✅
-    </div>
-    <a class="modal-confirm-btn" id="modalConfirmBtn" href="#" target="_blank">
-      <svg width="17" height="17" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
-      <span id="modalConfirmText">I've paid — notify the owner on WhatsApp</span>
-    </a>
-    <div class="modal-note" id="modalNote">After clicking, WhatsApp will open with a pre-written message to confirm your payment.</div>
-  </div>
-</div>
+    # ── 4. Societ\u00e0 e Faticit\u00e0 ─────────────────────────────────────────
+    {
+        "num": 4,
+        "title": "Societ\u00e0, Faticit\u00e0 e Libert\u00e0 Limitata",
+        "toc": "Societ\u00e0, Faticit\u00e0 e Libert\u00e0 Limitata",
+        "subs": [
+            {
+                "h": "Il ruolo sociale come gabbia e ancora",
+                "b": (
+                    "Pirandello presenta la struttura sociale come ambivalente: da un lato opprime "
+                    "l\u2019individuo imponendo ruoli predefiniti; dall\u2019altro, fornisce il "
+                    "framework senza il quale l\u2019azione autentica diventa impossibile. Mattia "
+                    "vive entrambe le dimensioni. Prima soffoca nella sua identit\u00e0 sociale di "
+                    "marito e bibliotecario; poi, privato di quella stessa identit\u00e0, si trova "
+                    "incapace di agire nel mondo. Il romanzo suggerisce quindi che la libert\u00e0 "
+                    "non \u00e8 l\u2019assenza di struttura, ma un modo diverso di abitarla."
+                ),
+                "quotes": [
+                    ("Non \u00e8 possibile vivere fuori dalla legge e fuori da quel groviglio di "
+                     "particolari, fortunosi o sfortunati come possono essere, che ci fanno quel che "
+                     "siamo.",
+                     "Pirandello, Il fu Mattia Pascal"),
+                ],
+                "evc": (
+                    "Questa citazione \u00e8 forse la pi\u00f9 esplicita presa di posizione filosofica "
+                    "di Pirandello nel romanzo, e coincide sorprendentemente con la critica di de "
+                    "Beauvoir a Sartre. L\u2019autore siciliano sembra anticipare l\u2019idea che la "
+                    "faticit\u00e0 \u2014 il contesto familiare, economico e sociale \u2014 non sia "
+                    "un ostacolo alla libert\u00e0 da eliminare, ma una condizione costitutiva "
+                    "dell\u2019esistenza umana."
+                )
+            },
+            {
+                "h": "La famiglia e il peso del passato",
+                "b": (
+                    "Le circostanze familiari di Mattia \u2014 i debiti ereditati dal padre, "
+                    "l\u2019incapacit\u00e0 della madre di gestire il denaro, il matrimonio indesiderato "
+                    "\u2014 costituiscono la sua faticit\u00e0 nel senso beauvoiriano: fatti "
+                    "inescapabili che restringono il campo delle sue scelte reali. Questi elementi "
+                    "non giustificano la sua malafede, ma la contestualizzano. Anche Sartre, nelle "
+                    "opere tarde influenzate dal marxismo, ammetterr\u00e0 che le circostanze limitano "
+                    "concretamente la libert\u00e0, pur senza eliminarla del tutto."
+                ),
+                "quotes": [],
+                "evc": (
+                    "La critica di de Beauvoir a Sartre \u00e8 particolarmente calzante nel caso di "
+                    "Mattia: sostenere che egli avrebbe potuto scegliere diversamente ignorando "
+                    "completamente il collasso economico familiare e le norme sociali del tardo "
+                    "Ottocento italiano significherebbe idealizzare la libert\u00e0 in modo astratto "
+                    "e irrealistico. Pirandello offre una visione pi\u00f9 incarnata e storicizzata "
+                    "della condizione umana."
+                )
+            },
+        ]
+    },
 
-<!-- LANG SWITCHER -->
-<div class="lang-bar">
-  <button class="lang-btn active" onclick="setLang('en')">EN</button>
-  <button class="lang-btn" onclick="setLang('it')">IT</button>
-  <button class="lang-btn" onclick="setLang('es')">ES</button>
-  <button class="lang-btn" onclick="setLang('fr')">FR</button>
-  <button class="lang-btn" onclick="setLang('de')">DE</button>
-</div>
+    # ── 5. Illusione vs Realt\u00e0 ──────────────────────────────────────────────
+    {
+        "num": 5,
+        "title": "Illusione contro Realt\u00e0",
+        "toc": "Illusione contro Realt\u00e0",
+        "subs": [
+            {
+                "h": "La doppia morte fittizia come metafora",
+                "b": (
+                    "Mattia finge la propria morte due volte nel corso del romanzo: la prima quando "
+                    "viene scambiato per morto nel canale, la seconda quando decide di tornare alla "
+                    "vita precedente abbandonando l\u2019identit\u00e0 di Adriano Meis. Queste morti "
+                    "fittizie sono potenti metafore della negazione di s\u00e9: ogni volta che Mattia "
+                    "\u2018muore\u2019, tenta di cancellare la responsabilit\u00e0 accumulata dalla "
+                    "vita precedente. Ma Pirandello dimostra che il passato non si cancella: ritorna "
+                    "sempre, come un\u2019ombra che il personaggio stesso evoca."
+                ),
+                "quotes": [
+                    ("Mi ero illuso di poter diventare un altro uomo, facendomi perdere di vista la "
+                     "mia realt\u00e0, se non addirittura negandola.",
+                     "Pirandello, Il fu Mattia Pascal"),
+                ],
+                "evc": (
+                    "Il motivo dell\u2019ombra che Pirandello usa \u2014 Mattia si definisce \u2018ombra "
+                    "di uomo\u2019 \u2014 rimanda direttamente alla concezione platonica dell\u2019illusione, "
+                    "ma acquista una valenza esistenzialista: l\u2019ombra non \u00e8 mancanza di "
+                    "sostanza metafisica, ma assenza di responsabilit\u00e0 autentica. Senza assumere "
+                    "la propria esistenza, si \u00e8 davvero fantasmi."
+                )
+            },
+            {
+                "h": "L'angoscia come momento di verit\u00e0",
+                "b": (
+                    "Il furto subito da Mattia durante la sua vita come Adriano Meis rappresenta il "
+                    "momento di rottura in cui l\u2019illusione crolla. Impossibilitato a denunciare "
+                    "il ladro senza rivelare la propria falsa identit\u00e0, Mattia si trova in uno "
+                    "stato di totale impotenza. \u00c8 in questo momento che Sartre collocherebbe "
+                    "l\u2019<i>angoisse</i>: la consapevolezza della propria responsabilit\u00e0 "
+                    "totale e del peso delle scelte compiute. La nebbia delle illusioni si dissolve "
+                    "e Mattia vede finalmente s\u00e9 stesso con chiarezza dolorosa."
+                ),
+                "quotes": [
+                    ("Un altro uomo, s\u00ec, ma a patto di non far nulla. E che uomo era, allora? "
+                     "Un\u2019ombra d\u2019uomo!",
+                     "Pirandello, Il fu Mattia Pascal"),
+                ],
+                "evc": (
+                    "L\u2019angoscia sartriana non \u00e8 una debolezza: \u00e8 il necessario punto "
+                    "di contatto con la realt\u00e0 della propria libert\u00e0. Pirandello costruisce "
+                    "questa scena con grande abilit\u00e0 drammatica: la parit\u00e0 tra il crimine "
+                    "subito e l\u2019impossibilit\u00e0 di reagire diventa il simbolo perfetto di una "
+                    "vita costruita sull\u2019inganno. Solo quando l\u2019inganno crolla, la vera "
+                    "esistenza pu\u00f2 ricominciare."
+                )
+            },
+        ]
+    },
 
-<!-- NAV -->
-<nav>
-  <a href="#" class="nav-logo">Nexus Studio</a>
-  <ul class="nav-links">
-    <li><a href="#services" data-t="nav_services">Services</a></li>
-    <li><a href="#pricing" data-t="nav_pricing">Pricing</a></li>
-    <li><a href="#how" data-t="nav_how">How it works</a></li>
-  </ul>
-  <a href="https://wa.me/393319370629" target="_blank" class="nav-wa">
-    <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
-    <span data-t="nav_cta">WhatsApp us</span>
-  </a>
-</nav>
+    # ── 6. Responsabilit\u00e0 e Crisi Esistenziale ────────────────────────────
+    {
+        "num": 6,
+        "title": "Responsabilit\u00e0 e Crisi Esistenziale",
+        "toc": "Responsabilit\u00e0 e Crisi Esistenziale",
+        "subs": [
+            {
+                "h": "Il riconoscimento della condanna alla libert\u00e0",
+                "b": (
+                    "Verso la fine del romanzo, Mattia raggiunge quella che Sartre chiamerebbe la fase "
+                    "finale del percorso esistenzialista: il riconoscimento della propria responsabilit\u00e0 "
+                    "e, con essa, della propria condanna alla libert\u00e0. Decide di fingere la propria "
+                    "morte per la seconda volta e di tornare al paese natale, affrontando le conseguenze "
+                    "delle proprie scelte. Trova la moglie risposata, la sua vecchia vita irrecuperabile. "
+                    "Non pu\u00f2 riprendere il passato, ma pu\u00f2 finalmente guardarlo in faccia."
+                ),
+                "quotes": [
+                    ("Quando un uomo \u00e8 nell\u2019angoscia, significa che \u00e8 consapevole della "
+                     "propria piena e profonda responsabilit\u00e0.",
+                     "Sartre, L\u2019esistenzialismo \u00e8 un umanismo (1946)"),
+                ],
+                "evc": (
+                    "Il finale del romanzo \u00e8 volutamente ambiguo. Mattia non raggiunge una libert\u00e0 "
+                    "trionfante: torna a una vita dimezzata, senza moglie, senza ruolo definito, "
+                    "visitando la propria tomba come uno spettatore della propria esistenza. Eppure, "
+                    "in questa accettazione senza illusioni, Pirandello suggerisce che forse \u00e8 "
+                    "proprio questo il massimo di autenticit\u00e0 raggiungibile: non la libert\u00e0 "
+                    "assoluta di Sartre, ma una libert\u00e0 consapevole dei propri limiti."
+                )
+            },
+            {
+                "h": "Un eroe esistenzialista sui generis",
+                "b": (
+                    "Mattia Pascal pu\u00f2 essere definito un eroe esistenzialista <i>sui generis</i>: "
+                    "segue le tappe classiche del percorso sartriano \u2014 malafede, angoscia, crisi, "
+                    "riconoscimento \u2014 ma non approda mai a una piena autenticit\u00e0. Rimane "
+                    "intrappolato tra due mondi, due identit\u00e0, due vite. Questa incompletezza "
+                    "non \u00e8 un fallimento narrativo di Pirandello: \u00e8 una scelta consapevole "
+                    "che riflette una visione della libert\u00e0 pi\u00f9 problematica e realistica "
+                    "di quella sartriana."
+                ),
+                "quotes": [
+                    ("La nostra libert\u00e0 \u00e8, in ultima analisi, sia una benedizione che una "
+                     "maledizione.",
+                     "Pacifici, Existentialism and Italian Literature (1955)"),
+                ],
+                "evc": (
+                    "L\u2019affermazione di Pacifici sintetizza bene la posizione di Pirandello: "
+                    "la libert\u00e0 non \u00e8 mai pura conquista. \u00c8 anche peso, solitudine, "
+                    "responsabilit\u00e0 insostenibile. Mattia Pascal incarna questa ambivalenza "
+                    "meglio di qualsiasi trattato filosofico: perch\u00e9 la vive, la fallisce, "
+                    "e infine la porta con s\u00e9 senza poterla risolvere. In questo risiede la "
+                    "sua grandezza letteraria e la sua profondit\u00e0 filosofica."
+                )
+            },
+        ]
+    },
+]
 
-<!-- HERO -->
-<section class="hero">
-  <div class="hero-glow"></div>
-  <div class="hero-badge"><span></span><span data-t="hero_badge">Web & AI for Small Businesses</span></div>
-  <h1 class="hero-title" data-t="hero_title">Your business deserves a <em>beautiful</em> website &amp; a smart AI assistant.</h1>
-  <p class="hero-sub" data-t="hero_sub">We build fast, modern websites and embed AI chatbots that work 24/7 — helping small businesses grow without hiring a team.</p>
-  <div class="hero-actions">
-    <a href="https://wa.me/393319370629" target="_blank" class="btn-wa">
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
-      <span data-t="hero_cta">Chat with us on WhatsApp</span>
-    </a>
-    <a href="#pricing" class="btn-primary"><span data-t="hero_cta2">See our packages</span> →</a>
-  </div>
-  <div class="hero-stats">
-    <div><div class="stat-num">40+</div><div class="stat-lbl" data-t="stat1">Sites launched</div></div>
-    <div><div class="stat-num">24h</div><div class="stat-lbl" data-t="stat2">AI support time</div></div>
-    <div><div class="stat-num">3×</div><div class="stat-lbl" data-t="stat3">Average lead increase</div></div>
-  </div>
-</section>
+# ════════════════════════════════════════════════════════════════════════════
+#  ASSEMBLE PDF
+# ════════════════════════════════════════════════════════════════════════════
+OUTPUT = "/mnt/user-data/outputs/Mattia_Pascal_Portfolio_IT.pdf"
 
-<!-- MARQUEE -->
-<div class="marquee-wrap" aria-hidden="true">
-  <div class="marquee-track">
-    <span class="marquee-item">Web Design</span><span class="marquee-dot">✦</span>
-    <span class="marquee-item">AI Chatbot</span><span class="marquee-dot">✦</span>
-    <span class="marquee-item">Piccole Aziende</span><span class="marquee-dot">✦</span>
-    <span class="marquee-item">24/7 Support</span><span class="marquee-dot">✦</span>
-    <span class="marquee-item">Consegna Rapida</span><span class="marquee-dot">✦</span>
-    <span class="marquee-item">Affordable</span><span class="marquee-dot">✦</span>
-    <span class="marquee-item">Web Design</span><span class="marquee-dot">✦</span>
-    <span class="marquee-item">AI Chatbot</span><span class="marquee-dot">✦</span>
-    <span class="marquee-item">Piccole Aziende</span><span class="marquee-dot">✦</span>
-    <span class="marquee-item">24/7 Support</span><span class="marquee-dot">✦</span>
-    <span class="marquee-item">Consegna Rapida</span><span class="marquee-dot">✦</span>
-    <span class="marquee-item">Affordable</span><span class="marquee-dot">✦</span>
-  </div>
-</div>
+doc = SimpleDocTemplate(
+    OUTPUT, pagesize=A4,
+    leftMargin=2*cm, rightMargin=2*cm,
+    topMargin=1.8*cm, bottomMargin=2*cm,
+    onFirstPage=on_page, onLaterPages=on_page
+)
 
-<!-- SERVICES -->
-<section class="services" id="services">
-  <div class="s-label" data-t="svc_label">What we offer</div>
-  <h2 class="s-title" data-t="svc_title">Everything a small business needs to <em>shine online</em></h2>
-  <div class="svc-grid">
-    <div class="svc-card"><div class="svc-icon">🤖</div><div class="svc-name" data-t="svc1_name">AI Chatbot Add-on</div><p class="svc-desc" data-t="svc1_desc">Already have a website? We plug in a smart AI chatbot that answers questions, captures leads, and books appointments — 24/7.</p></div>
-    <div class="svc-card"><div class="svc-icon">🌐</div><div class="svc-name" data-t="svc2_name">Website + AI Chatbot</div><p class="svc-desc" data-t="svc2_desc">A brand-new site built on Carrd with a fully integrated AI assistant. Fast, modern, mobile-first — ready in days.</p></div>
-    <div class="svc-card"><div class="svc-icon">⭐</div><div class="svc-name" data-t="svc3_name">Premium Full Package</div><p class="svc-desc" data-t="svc3_desc">Website + chatbot + 3 months of maintenance. We handle everything so you can focus on running your business.</p></div>
-    <div class="svc-card"><div class="svc-icon">🔧</div><div class="svc-name" data-t="svc4_name">Monthly Maintenance</div><p class="svc-desc" data-t="svc4_desc">Ongoing updates, chatbot management, and priority support. Your site stays fast, fresh, and working perfectly.</p></div>
-  </div>
-</section>
+story = []
 
-<!-- PRICING -->
-<section class="pricing" id="pricing">
-  <div class="s-label" data-t="price_label">Service Packages</div>
-  <h2 class="s-title" data-t="price_title">Simple pricing, <em>no surprises</em></h2>
-  <div class="price-grid">
+# ── COVER PAGE ───────────────────────────────────────────────────────────────
+cover_bg_data = [[""]]
+cover_bg = Table(cover_bg_data, colWidths=[W - 4*cm], rowHeights=[H - 6*cm])
+cover_bg.setStyle(TableStyle([
+    ("BACKGROUND", (0,0),(-1,-1), DEEP_NAVY),
+    ("TOPPADDING", (0,0),(-1,-1), 3*cm),
+]))
 
-    <!-- STARTER -->
-    <div class="plan">
-      <div class="plan-name" data-t="p1_name">Starter</div>
-      <div class="plan-price">$75</div>
-      <div class="plan-freq" data-t="p1_freq">One-time payment</div>
-      <div class="plan-delivery" data-t="p1_del">⚡ 1–2 days delivery</div>
-      <hr class="pd"/>
-      <ul class="plan-features">
-        <li data-t="p1_f1">AI chatbot on your existing website</li>
-        <li data-t="p1_f2">Trained on your FAQs &amp; services</li>
-        <li data-t="p1_f3">Works 24/7, captures leads</li>
-      </ul>
-      <div class="plan-btns">
-        <a href="https://wa.me/393319370629?text=Hi!%20I%20want%20to%20order%20the%20Starter%20package%20-%20%2475" target="_blank" class="plan-btn plan-btn-wa" data-t="btn_wa">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" style="flex-shrink:0"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
-          Order on WhatsApp
-        </a>
-        <button class="plan-btn plan-btn-iban" onclick="openIban('Starter','$75')" data-t="btn_iban">🏦 Pay via Bank Transfer</button>
-      </div>
-    </div>
+cover_content = [
+    Spacer(1, 2.5*cm),
+    Paragraph("IL FU MATTIA PASCAL", T_TITLE),
+    Spacer(1, 0.4*cm),
+    Paragraph("Luigi Pirandello", T_SUB),
+    Spacer(1, 0.6*cm),
+    HRFlowable(width="60%", thickness=1.5, color=GOLD, spaceAfter=0.6*cm),
+    Paragraph("Portfolio Analitico per Temi", S(
+        "cvt2", fontName="DJV-S", fontSize=12, leading=16,
+        textColor=LIGHT_GOLD, alignment=TA_CENTER, spaceAfter=4)),
+    Spacer(1, 0.4*cm),
+    Paragraph(
+        "Malafede · Angoscia · Identit\u00e0 · Societ\u00e0 · Illusione · Responsabilit\u00e0",
+        S("cvtags", fontName="DJV-I", fontSize=9.5, leading=14,
+          textColor=GOLD, alignment=TA_CENTER)),
+    Spacer(1, 1.5*cm),
+    HRFlowable(width="40%", thickness=0.8, color=GOLD, spaceAfter=0.5*cm),
+    Paragraph("Analisi basata sull\u2019EPQ di Anisia Yastrzhembskiy",
+              S("cvsrc", fontName="DJV-S", fontSize=9, textColor=LIGHT_GOLD, alignment=TA_CENTER)),
+]
 
-    <!-- STANDARD (featured) -->
-    <div class="plan featured">
-      <div class="plan-badge" data-t="p2_badge">Most popular</div>
-      <div class="plan-name" data-t="p2_name">Standard</div>
-      <div class="plan-price">$250</div>
-      <div class="plan-freq" data-t="p2_freq">One-time payment</div>
-      <div class="plan-delivery" data-t="p2_del">⚡ 3–5 days delivery</div>
-      <hr class="pd"/>
-      <ul class="plan-features">
-        <li data-t="p2_f1">New website built on Carrd</li>
-        <li data-t="p2_f2">AI chatbot included</li>
-        <li data-t="p2_f3">Mobile responsive design</li>
-        <li data-t="p2_f4">Lead capture system</li>
-      </ul>
-      <div class="plan-btns">
-        <a href="https://wa.me/393319370629?text=Hi!%20I%20want%20to%20order%20the%20Standard%20package%20-%20%24250" target="_blank" class="plan-btn plan-btn-solid" data-t="btn_wa">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" style="flex-shrink:0"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
-          Order on WhatsApp
-        </a>
-        <button class="plan-btn plan-btn-iban" onclick="openIban('Standard','$250')" data-t="btn_iban">🏦 Pay via Bank Transfer</button>
-      </div>
-    </div>
+for item in cover_content:
+    story.append(item)
 
-    <!-- PREMIUM -->
-    <div class="plan">
-      <div class="plan-name" data-t="p3_name">Premium</div>
-      <div class="plan-price">$350</div>
-      <div class="plan-freq" data-t="p3_freq">One-time payment</div>
-      <div class="plan-delivery" data-t="p3_del">⚡ 3–5 days delivery</div>
-      <hr class="pd"/>
-      <ul class="plan-features">
-        <li data-t="p3_f1">Website + AI chatbot</li>
-        <li data-t="p3_f2">3 months maintenance included</li>
-        <li data-t="p3_f3">Priority support</li>
-        <li data-t="p3_f4">Bot retraining included</li>
-      </ul>
-      <div class="plan-btns">
-        <a href="https://wa.me/393319370629?text=Hi!%20I%20want%20to%20order%20the%20Premium%20package%20-%20%24350" target="_blank" class="plan-btn plan-btn-wa" data-t="btn_wa">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" style="flex-shrink:0"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
-          Order on WhatsApp
-        </a>
-        <button class="plan-btn plan-btn-iban" onclick="openIban('Premium','$350')" data-t="btn_iban">🏦 Pay via Bank Transfer</button>
-      </div>
-    </div>
+story.append(PageBreak())
 
-    <!-- MONTHLY -->
-    <div class="plan">
-      <div class="plan-name" data-t="p4_name">Monthly Maintenance</div>
-      <div class="plan-price">$40</div>
-      <div class="plan-freq" data-t="p4_freq">/month</div>
-      <div class="plan-delivery" data-t="p4_del">🔄 Ongoing service</div>
-      <hr class="pd"/>
-      <ul class="plan-features">
-        <li data-t="p4_f1">Site updates &amp; content edits</li>
-        <li data-t="p4_f2">Chatbot management</li>
-        <li data-t="p4_f3">Performance monitoring</li>
-      </ul>
-      <div class="plan-btns">
-        <a href="https://wa.me/393319370629?text=Hi!%20I%20want%20to%20subscribe%20to%20Monthly%20Maintenance%20-%20%2440%2Fmo" target="_blank" class="plan-btn plan-btn-wa" data-t="btn_wa">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" style="flex-shrink:0"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
-          Order on WhatsApp
-        </a>
-        <button class="plan-btn plan-btn-iban" onclick="openIban('Monthly Maintenance','$40/mo')" data-t="btn_iban">🏦 Pay via Bank Transfer</button>
-      </div>
-    </div>
+# ── TABLE OF CONTENTS ────────────────────────────────────────────────────────
+story += [
+    Spacer(1, 0.3*cm),
+    Paragraph("Indice dei Contenuti", S("toc_h", fontName="DJV-B", fontSize=16,
+              textColor=DEEP_NAVY, spaceAfter=6)),
+    hr(GOLD, 1.2),
+    Spacer(1, 0.2*cm),
+]
 
-    <!-- TIDIO -->
-    <div class="plan">
-      <div class="plan-name" data-t="p5_name">Tidio Upgrade</div>
-      <div class="plan-price">$150</div>
-      <div class="plan-freq" data-t="p5_freq">Setup fee</div>
-      <div class="plan-delivery" data-t="p5_del">⚡ 1–2 days delivery</div>
-      <hr class="pd"/>
-      <ul class="plan-features">
-        <li data-t="p5_f1">Rebuild with Tidio AI</li>
-        <li data-t="p5_f2">Better automation flows</li>
-        <li data-t="p5_f3">Charge more with premium AI</li>
-      </ul>
-      <div class="plan-btns">
-        <a href="https://wa.me/393319370629?text=Hi!%20I%20want%20the%20Tidio%20Upgrade%20-%20%24150" target="_blank" class="plan-btn plan-btn-wa" data-t="btn_wa">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" style="flex-shrink:0"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
-          Order on WhatsApp
-        </a>
-        <button class="plan-btn plan-btn-iban" onclick="openIban('Tidio Upgrade','$150')" data-t="btn_iban">🏦 Pay via Bank Transfer</button>
-      </div>
-    </div>
+for sec in sections:
+    story.append(Paragraph(
+        f"<b>Sezione {sec['num']}</b>\u2003{sec['toc']}",
+        TOC_S))
 
-  </div>
-</section>
+story.append(Spacer(1, 0.5*cm))
+story.append(hr(SECTION_BG, 2))
+story.append(PageBreak())
 
-<!-- AI SECTION -->
-<section class="ai-sec">
-  <div>
-    <div class="s-label" data-t="ai_label">AI Chatbot</div>
-    <h2 class="s-title" data-t="ai_title">A team member that <em>never sleeps</em></h2>
-    <p class="ai-desc" data-t="ai_desc">Your AI assistant knows your business inside out. It answers questions instantly, collects customer info, and hands off to you only when needed.</p>
-    <ul class="ai-list">
-      <li data-t="ai_f1">Answers FAQs automatically, 24/7</li>
-      <li data-t="ai_f2">Books appointments &amp; collects leads</li>
-      <li data-t="ai_f3">Speaks your brand voice, not robot jargon</li>
-      <li data-t="ai_f4">Gets smarter as your business grows</li>
-    </ul>
-  </div>
-  <div>
-    <div class="chat-demo">
-      <div class="chat-hdr">
-        <div class="chat-av">🤖</div>
-        <div><div class="chat-nm">AI Assistant</div><div class="chat-st"><b>●</b> Online now</div></div>
-      </div>
-      <div class="msgs">
-        <div class="msg msg-b" data-t="chat1">Hi! Welcome to Rosa's Bakery 🍞 How can I help you today?</div>
-        <div class="msg msg-u" data-t="chat2">Do you do custom cakes for birthdays?</div>
-        <div class="msg msg-b" data-t="chat3">Absolutely! Rosa specializes in custom cakes from $65. Would you like to schedule a tasting?</div>
-        <div class="msg msg-u" data-t="chat4">Yes! This Saturday works for me.</div>
-        <div class="typing"><div class="dot"></div><div class="dot"></div><div class="dot"></div></div>
-      </div>
-    </div>
-  </div>
-</section>
+# ── SECTIONS ─────────────────────────────────────────────────────────────────
+for sec in sections:
+    story += sec_header(sec["num"], sec["title"])
 
-<!-- HOW IT WORKS -->
-<section class="how" id="how">
-  <div class="s-label" data-t="how_label">Process</div>
-  <h2 class="s-title" data-t="how_title">From idea to live site <em>in days</em></h2>
-  <div class="steps">
-    <div><div class="step-num">01</div><div class="step-title" data-t="step1_t">WhatsApp us</div><p class="step-desc" data-t="step1_d">Tell us about your business. We reply fast and ask a few simple questions.</p></div>
-    <div><div class="step-num">02</div><div class="step-title" data-t="step2_t">We build it</div><p class="step-desc" data-t="step2_d">We design your site and set up your chatbot — trained on your services and FAQs.</p></div>
-    <div><div class="step-num">03</div><div class="step-title" data-t="step3_t">You review</div><p class="step-desc" data-t="step3_d">We show you a preview. You tell us any changes — we handle everything.</p></div>
-    <div><div class="step-num">04</div><div class="step-title" data-t="step4_t">Go live 🎉</div><p class="step-desc" data-t="step4_d">Your site is live. Customers can find you, message your bot, and book right away.</p></div>
-  </div>
-</section>
+    for sub in sec["subs"]:
+        items = [
+            Paragraph(sub["h"], SH_HEAD),
+            Paragraph(sub["b"], BODY),
+        ]
+        for qt, src in sub.get("quotes", []):
+            items += qblock(qt, src)
+        items += evc(sub["evc"])
+        story.append(KeepTogether(items[:4]))
+        for item in items[4:]:
+            story.append(item)
 
-<!-- CTA -->
-<section class="cta-sec" id="contact">
-  <h2 class="cta-title" data-t="cta_title">Ready to grow your business <em>online?</em></h2>
-  <p class="cta-sub" data-t="cta_sub">Message us on WhatsApp — we reply within hours, no commitment needed.</p>
-  <div class="cta-actions">
-    <a href="https://wa.me/393319370629" target="_blank" class="cta-wa">
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
-      <span data-t="cta_btn">Message us on WhatsApp</span>
-    </a>
-    <a href="#pricing" class="cta-ghost" data-t="cta_ghost">View packages</a>
-  </div>
-</section>
+    story.append(PageBreak())
 
-<!-- FOOTER -->
-<footer>
-  <span class="foot-logo">Nexus Studio</span>
-  <span data-t="footer_copy">© 2026 Nexus Studio. All rights reserved.</span>
-  <div style="display:flex;gap:1.25rem">
-    <a href="https://wa.me/393319370629" target="_blank">WhatsApp</a>
-    <a href="mailto:hello@nexusstudio.co">Email</a>
-  </div>
-</footer>
+# ── CONCLUSIONI ───────────────────────────────────────────────────────────────
+story += sec_header("—", "Conclusioni")
+story.append(Paragraph(
+    "Il percorso di Mattia Pascal attraverso il romanzo di Pirandello illustra, con una forza "
+    "narrativa che nessun trattato teorico potrebbe eguagliare, la complessit\u00e0 della "
+    "libert\u00e0 umana. L\u2019analisi condotta attraverso i sei temi individuati \u2014 "
+    "malafede, angoscia, identit\u00e0, societ\u00e0, illusione e responsabilit\u00e0 \u2014 "
+    "rivela un personaggio che \u00e8 allo stesso tempo un eroe esistenzialista classico e una "
+    "critica vivente delle sue stesse premesse.", BODY))
+story.append(Paragraph(
+    "Mattia \u00e8 condannato alla libert\u00e0 nel senso sartriano: non pu\u00f2 sfuggire "
+    "alla propria coscienza, alle proprie scelte, alla propria responsabilit\u00e0. Ma la sua "
+    "libert\u00e0 \u00e8 sempre mediata dalla faticit\u00e0 nel senso beauvoiriano: la famiglia, "
+    "i debiti, la struttura sociale del tardo Ottocento italiano definiscono i confini entro cui "
+    "la sua esistenza si svolge. Pirandello unisce queste due visioni in modo sintetico e "
+    "originale, producendo un romanzo che \u00e8 allo stesso tempo profondamente radicato nella "
+    "realt\u00e0 storica e universalmente valido come esplorazione della condizione umana.", BODY))
+story.append(Paragraph(
+    "La grandezza di <i>Il fu Mattia Pascal</i> risiede proprio in questa ambivalenza irrisolta: "
+    "Mattia non trionfa, non \u00e8 redento, non raggiunge la pace. Visita la propria tomba e "
+    "continua a vivere come un\u2019ombra tra i vivi. Ed \u00e8 forse in questa permanenza "
+    "nell\u2019incompiutezza \u2014 condannato a essere libero, ma non abbastanza da liberarsi "
+    "davvero \u2014 che il romanzo tocca la sua verit\u00e0 pi\u00f9 profonda.", BODY))
 
-<script>
-// ─── IBAN MODAL ────────────────────────────────────────────────
-const OWNER_WA = '393319370629';
-const IBAN = 'IT28A0503411755000000104454';
+story += evc(
+    "Il confronto tra Pirandello, Sartre e de Beauvoir dimostra che le grandi domande "
+    "sull\u2019identit\u00e0, la libert\u00e0 e la responsabilit\u00e0 non appartengono a un "
+    "singolo sistema filosofico. Emergono dall\u2019esperienza vissuta, dalla letteratura, "
+    "dall\u2019arte. <i>Il fu Mattia Pascal</i> anticipa di decenni le formulazioni teoriche "
+    "dell\u2019esistenzialismo, confermando che Pirandello non era solo un grande narratore, "
+    "ma anche un pensatore di straordinaria profondit\u00e0."
+)
 
-// Translations for modal text
-const modalT = {
-  en: {
-    step:'Step 1 of 2', title:'Pay via Bank Transfer',
-    ibanLabel:'IBAN', copy:'Copy', copied:'Copied!',
-    instructions:'<b>How to pay:</b><br>1. Copy the IBAN above<br>2. Open your banking app and make the transfer<br>3. Write the package name in the payment reference<br>4. Click the button below to notify me on WhatsApp ✅',
-    confirm:'✅ I\'ve paid — notify the owner', note:'WhatsApp will open with a pre-written message to confirm your payment to the owner.',
-    btnIban:'🏦 Pay via Bank Transfer', btnWa:'Order on WhatsApp'
-  },
-  it: {
-    step:'Passo 1 di 2', title:'Paga tramite bonifico bancario',
-    ibanLabel:'IBAN', copy:'Copia', copied:'Copiato!',
-    instructions:'<b>Come pagare:</b><br>1. Copia l\'IBAN qui sopra<br>2. Apri la tua app bancaria ed effettua il bonifico<br>3. Scrivi il nome del pacchetto nella causale<br>4. Clicca il pulsante qui sotto per avvisarmi su WhatsApp ✅',
-    confirm:'✅ Ho pagato — avvisa il titolare', note:'WhatsApp si aprirà con un messaggio già scritto per confermare il tuo pagamento.',
-    btnIban:'🏦 Paga con bonifico', btnWa:'Ordina su WhatsApp'
-  },
-  es: {
-    step:'Paso 1 de 2', title:'Pagar por transferencia bancaria',
-    ibanLabel:'IBAN', copy:'Copiar', copied:'¡Copiado!',
-    instructions:'<b>Cómo pagar:</b><br>1. Copia el IBAN de arriba<br>2. Abre tu app bancaria y realiza la transferencia<br>3. Escribe el nombre del paquete en el concepto<br>4. Haz clic abajo para notificarme por WhatsApp ✅',
-    confirm:'✅ He pagado — notificar al propietario', note:'WhatsApp se abrirá con un mensaje ya escrito para confirmar tu pago.',
-    btnIban:'🏦 Pagar por transferencia', btnWa:'Pedir por WhatsApp'
-  },
-  fr: {
-    step:'Étape 1 sur 2', title:'Payer par virement bancaire',
-    ibanLabel:'IBAN', copy:'Copier', copied:'Copié !',
-    instructions:'<b>Comment payer :</b><br>1. Copiez l\'IBAN ci-dessus<br>2. Ouvrez votre application bancaire et effectuez le virement<br>3. Indiquez le nom du forfait dans la référence<br>4. Cliquez ci-dessous pour me notifier sur WhatsApp ✅',
-    confirm:'✅ J\'ai payé — notifier le propriétaire', note:'WhatsApp s\'ouvrira avec un message pré-rédigé pour confirmer votre paiement.',
-    btnIban:'🏦 Payer par virement', btnWa:'Commander sur WhatsApp'
-  },
-  de: {
-    step:'Schritt 1 von 2', title:'Per Banküberweisung bezahlen',
-    ibanLabel:'IBAN', copy:'Kopieren', copied:'Kopiert!',
-    instructions:'<b>Wie bezahlen:</b><br>1. Kopieren Sie die IBAN oben<br>2. Öffnen Sie Ihre Banking-App und führen Sie die Überweisung durch<br>3. Schreiben Sie den Paketnamen als Verwendungszweck<br>4. Klicken Sie unten, um mich per WhatsApp zu benachrichtigen ✅',
-    confirm:'✅ Ich habe bezahlt — Eigentümer benachrichtigen', note:'WhatsApp öffnet sich mit einer vorgefertigten Nachricht zur Zahlungsbestätigung.',
-    btnIban:'🏦 Per Überweisung bezahlen', btnWa:'Per WhatsApp bestellen'
-  }
-};
-
-let currentLang = 'en';
-let currentPkg = '';
-let currentPrice = '';
-
-function openIban(pkg, price) {
-  currentPkg = pkg;
-  currentPrice = price;
-  const m = modalT[currentLang] || modalT.en;
-
-  document.getElementById('modalStep').textContent = m.step;
-  document.getElementById('modalTitle').textContent = m.title;
-  document.getElementById('ibanLabel').textContent = m.ibanLabel;
-  document.getElementById('copyBtn').textContent = m.copy;
-  document.getElementById('copyBtn').classList.remove('copied');
-  document.getElementById('modalInstructions').innerHTML = m.instructions;
-  document.getElementById('modalConfirmText').textContent = m.confirm;
-  document.getElementById('modalNote').textContent = m.note;
-
-  // Package info line
-  document.getElementById('modalPkg').innerHTML = 'Package: <strong>' + pkg + '</strong> — <strong>' + price + '</strong>';
-
-  // Build WhatsApp message TO OWNER (your number)
-  const waMsg = encodeURIComponent(
-    '🛒 NEW PAYMENT NOTIFICATION\n' +
-    '━━━━━━━━━━━━━━━━━━━━\n' +
-    '📦 Package: ' + pkg + '\n' +
-    '💰 Amount: ' + price + '\n' +
-    '💳 Payment method: Bank Transfer (IBAN)\n' +
-    '━━━━━━━━━━━━━━━━━━━━\n' +
-    'A customer has just paid via IBAN and is confirming their order. Please check your bank account and get in touch with them!'
-  );
-  document.getElementById('modalConfirmBtn').href = 'https://wa.me/' + OWNER_WA + '?text=' + waMsg;
-
-  document.getElementById('ibanModal').classList.add('open');
-  document.body.style.overflow = 'hidden';
-}
-
-function closeModal() {
-  document.getElementById('ibanModal').classList.remove('open');
-  document.body.style.overflow = '';
-}
-
-function copyIban() {
-  const m = modalT[currentLang] || modalT.en;
-  navigator.clipboard.writeText(IBAN).then(() => {
-    const btn = document.getElementById('copyBtn');
-    btn.textContent = m.copied;
-    btn.classList.add('copied');
-    setTimeout(() => {
-      btn.textContent = m.copy;
-      btn.classList.remove('copied');
-    }, 2500);
-  }).catch(() => {
-    // fallback for older browsers
-    const el = document.createElement('textarea');
-    el.value = IBAN;
-    document.body.appendChild(el);
-    el.select();
-    document.execCommand('copy');
-    document.body.removeChild(el);
-    const btn = document.getElementById('copyBtn');
-    btn.textContent = m.copied;
-    btn.classList.add('copied');
-    setTimeout(() => { btn.textContent = m.copy; btn.classList.remove('copied'); }, 2500);
-  });
-}
-
-// Close modal on overlay click
-document.getElementById('ibanModal').addEventListener('click', function(e) {
-  if (e.target === this) closeModal();
-});
-
-// ─── TRANSLATIONS ─────────────────────────────────────────────
-const T = {
-  en: {
-    nav_services:"Services", nav_pricing:"Pricing", nav_how:"How it works", nav_cta:"WhatsApp us",
-    hero_badge:"Web & AI for Small Businesses",
-    hero_title:"Your business deserves a beautiful website & a smart AI assistant.",
-    hero_sub:"We build fast, modern websites and embed AI chatbots that work 24/7 — helping small businesses grow without hiring a team.",
-    hero_cta:"Chat with us on WhatsApp", hero_cta2:"See our packages",
-    stat1:"Sites launched", stat2:"AI support time", stat3:"Average lead increase",
-    svc_label:"What we offer", svc_title:"Everything a small business needs to shine online",
-    svc1_name:"AI Chatbot Add-on", svc1_desc:"Already have a website? We plug in a smart AI chatbot that answers questions, captures leads, and books appointments — 24/7.",
-    svc2_name:"Website + AI Chatbot", svc2_desc:"A brand-new site built on Carrd with a fully integrated AI assistant. Fast, modern, mobile-first — ready in days.",
-    svc3_name:"Premium Full Package", svc3_desc:"Website + chatbot + 3 months of maintenance. We handle everything so you can focus on running your business.",
-    svc4_name:"Monthly Maintenance", svc4_desc:"Ongoing updates, chatbot management, and priority support. Your site stays fast, fresh, and working perfectly.",
-    price_label:"Service Packages", price_title:"Simple pricing, no surprises",
-    p1_name:"Starter", p1_freq:"One-time payment", p1_del:"⚡ 1–2 days delivery",
-    p1_f1:"AI chatbot on your existing website", p1_f2:"Trained on your FAQs & services", p1_f3:"Works 24/7, captures leads",
-    p2_badge:"Most popular", p2_name:"Standard", p2_freq:"One-time payment", p2_del:"⚡ 3–5 days delivery",
-    p2_f1:"New website built on Carrd", p2_f2:"AI chatbot included", p2_f3:"Mobile responsive design", p2_f4:"Lead capture system",
-    p3_name:"Premium", p3_freq:"One-time payment", p3_del:"⚡ 3–5 days delivery",
-    p3_f1:"Website + AI chatbot", p3_f2:"3 months maintenance included", p3_f3:"Priority support", p3_f4:"Bot retraining included",
-    p4_name:"Monthly Maintenance", p4_freq:"/month", p4_del:"🔄 Ongoing service",
-    p4_f1:"Site updates & content edits", p4_f2:"Chatbot management", p4_f3:"Performance monitoring",
-    p5_name:"Tidio Upgrade", p5_freq:"Setup fee", p5_del:"⚡ 1–2 days delivery",
-    p5_f1:"Rebuild with Tidio AI", p5_f2:"Better automation flows", p5_f3:"Charge more with premium AI",
-    btn_wa:"Order on WhatsApp", btn_iban:"🏦 Pay via Bank Transfer",
-    ai_label:"AI Chatbot", ai_title:"A team member that never sleeps",
-    ai_desc:"Your AI assistant knows your business inside out. It answers questions instantly, collects customer info, and hands off to you only when needed.",
-    ai_f1:"Answers FAQs automatically, 24/7", ai_f2:"Books appointments & collects leads",
-    ai_f3:"Speaks your brand voice, not robot jargon", ai_f4:"Gets smarter as your business grows",
-    chat1:"Hi! Welcome to Rosa's Bakery 🍞 How can I help you today?",
-    chat2:"Do you do custom cakes for birthdays?",
-    chat3:"Absolutely! Rosa specializes in custom cakes from $65. Would you like to schedule a tasting?",
-    chat4:"Yes! This Saturday works for me.",
-    how_label:"Process", how_title:"From idea to live site in days",
-    step1_t:"WhatsApp us", step1_d:"Tell us about your business. We reply fast and ask a few simple questions.",
-    step2_t:"We build it", step2_d:"We design your site and set up your chatbot — trained on your services and FAQs.",
-    step3_t:"You review", step3_d:"We show you a preview. You tell us any changes — we handle everything.",
-    step4_t:"Go live 🎉", step4_d:"Your site is live. Customers can find you, message your bot, and book right away.",
-    cta_title:"Ready to grow your business online?",
-    cta_sub:"Message us on WhatsApp — we reply within hours, no commitment needed.",
-    cta_btn:"Message us on WhatsApp", cta_ghost:"View packages",
-    footer_copy:"© 2026 Nexus Studio. All rights reserved."
-  },
-  it: {
-    nav_services:"Servizi", nav_pricing:"Prezzi", nav_how:"Come funziona", nav_cta:"Scrivici su WhatsApp",
-    hero_badge:"Web & AI per Piccole Aziende",
-    hero_title:"La tua azienda merita un sito fantastico e un assistente AI intelligente.",
-    hero_sub:"Creiamo siti web moderni e veloci con chatbot AI integrati che lavorano 24/7 — per aiutare le piccole aziende a crescere senza assumere personale.",
-    hero_cta:"Scrivici su WhatsApp", hero_cta2:"Vedi i pacchetti",
-    stat1:"Siti realizzati", stat2:"Supporto AI h24", stat3:"Aumento medio dei clienti",
-    svc_label:"Cosa offriamo", svc_title:"Tutto ciò di cui una piccola azienda ha bisogno per brillare online",
-    svc1_name:"Chatbot AI aggiuntivo", svc1_desc:"Hai già un sito? Integriamo un chatbot AI intelligente che risponde alle domande, raccoglie contatti e prenota appuntamenti — 24/7.",
-    svc2_name:"Sito Web + Chatbot AI", svc2_desc:"Un sito nuovo di zecca su Carrd con assistente AI completamente integrato. Veloce, moderno, mobile-first — pronto in pochi giorni.",
-    svc3_name:"Pacchetto Premium Completo", svc3_desc:"Sito + chatbot + 3 mesi di manutenzione. Gestiamo tutto noi mentre tu ti concentri sulla tua attività.",
-    svc4_name:"Manutenzione Mensile", svc4_desc:"Aggiornamenti continui, gestione del chatbot e supporto prioritario. Il tuo sito rimane veloce, aggiornato e perfettamente funzionante.",
-    price_label:"Pacchetti Servizi", price_title:"Prezzi chiari, nessuna sorpresa",
-    p1_name:"Starter", p1_freq:"Pagamento unico", p1_del:"⚡ Consegna in 1–2 giorni",
-    p1_f1:"Chatbot AI aggiunto al tuo sito esistente", p1_f2:"Addestrato sulle tue FAQ e servizi", p1_f3:"Attivo 24/7, raccoglie contatti",
-    p2_badge:"Più richiesto", p2_name:"Standard", p2_freq:"Pagamento unico", p2_del:"⚡ Consegna in 3–5 giorni",
-    p2_f1:"Nuovo sito web su Carrd", p2_f2:"Chatbot AI incluso", p2_f3:"Design responsive per mobile", p2_f4:"Sistema di raccolta contatti",
-    p3_name:"Premium", p3_freq:"Pagamento unico", p3_del:"⚡ Consegna in 3–5 giorni",
-    p3_f1:"Sito Web + Chatbot AI", p3_f2:"3 mesi di manutenzione inclusi", p3_f3:"Supporto prioritario", p3_f4:"Riaddestramento del bot incluso",
-    p4_name:"Manutenzione Mensile", p4_freq:"/mese", p4_del:"🔄 Servizio continuativo",
-    p4_f1:"Aggiornamenti sito e contenuti", p4_f2:"Gestione del chatbot", p4_f3:"Monitoraggio delle performance",
-    p5_name:"Upgrade Tidio", p5_freq:"Costo di attivazione", p5_del:"⚡ Consegna in 1–2 giorni",
-    p5_f1:"Ricostruzione con Tidio AI", p5_f2:"Flussi di automazione migliorati", p5_f3:"Guadagna di più con l'AI premium",
-    btn_wa:"Ordina su WhatsApp", btn_iban:"🏦 Paga con bonifico bancario",
-    ai_label:"Chatbot AI", ai_title:"Un collaboratore che non dorme mai",
-    ai_desc:"Il tuo assistente AI conosce la tua attività a fondo. Risponde istantaneamente, raccoglie le informazioni dei clienti e ti passa solo quando è necessario.",
-    ai_f1:"Risponde alle FAQ automaticamente, 24/7", ai_f2:"Prenota appuntamenti e raccoglie contatti",
-    ai_f3:"Parla con la voce del tuo brand", ai_f4:"Diventa più intelligente con il crescere della tua attività",
-    chat1:"Ciao! Benvenuto da Rosa's Bakery 🍞 Come posso aiutarti oggi?",
-    chat2:"Fate torte personalizzate per i compleanni?",
-    chat3:"Certamente! Rosa è specializzata in torte personalizzate a partire da €65. Vuoi prenotare una degustazione?",
-    chat4:"Sì! Sabato prossimo va benissimo.",
-    how_label:"Come funziona", how_title:"Dall'idea al sito online in pochi giorni",
-    step1_t:"Scrivici su WhatsApp", step1_d:"Raccontaci della tua azienda. Rispondiamo velocemente con qualche semplice domanda.",
-    step2_t:"Lo costruiamo noi", step2_d:"Progettiamo il sito e configuriamo il chatbot, addestrato sui tuoi servizi e FAQ.",
-    step3_t:"Rivedi e approva", step3_d:"Ti mostriamo un'anteprima. Dimmi le modifiche — pensiamo a tutto noi.",
-    step4_t:"Vai live 🎉", step4_d:"Il tuo sito è online. I clienti ti trovano, scrivono al bot e prenotano subito.",
-    cta_title:"Pronto a far crescere la tua azienda online?",
-    cta_sub:"Scrivici su WhatsApp — rispondiamo in poche ore, senza impegno.",
-    cta_btn:"Scrivici su WhatsApp", cta_ghost:"Vedi i pacchetti",
-    footer_copy:"© 2026 Nexus Studio. Tutti i diritti riservati."
-  },
-  es: {
-    nav_services:"Servicios", nav_pricing:"Precios", nav_how:"Cómo funciona", nav_cta:"Escríbenos",
-    hero_badge:"Web & IA para Pequeñas Empresas",
-    hero_title:"Tu empresa merece un sitio web increíble y un asistente de IA inteligente.",
-    hero_sub:"Creamos sitios web modernos con chatbots de IA integrados que trabajan 24/7 — ayudando a las pequeñas empresas a crecer sin contratar personal.",
-    hero_cta:"Escríbenos por WhatsApp", hero_cta2:"Ver paquetes",
-    stat1:"Sitios creados", stat2:"Soporte IA 24h", stat3:"Aumento medio de clientes",
-    svc_label:"Qué ofrecemos", svc_title:"Todo lo que una pequeña empresa necesita para brillar online",
-    svc1_name:"Chatbot IA adicional", svc1_desc:"¿Ya tienes web? Integramos un chatbot IA inteligente que responde preguntas, captura leads y reserva citas — 24/7.",
-    svc2_name:"Web + Chatbot IA", svc2_desc:"Un sitio nuevo en Carrd con asistente IA integrado. Rápido, moderno, mobile-first — listo en días.",
-    svc3_name:"Paquete Premium Completo", svc3_desc:"Web + chatbot + 3 meses de mantenimiento. Nos encargamos de todo para que tú te centres en tu negocio.",
-    svc4_name:"Mantenimiento Mensual", svc4_desc:"Actualizaciones continuas, gestión del chatbot y soporte prioritario. Tu sitio siempre rápido y funcionando.",
-    price_label:"Paquetes de Servicio", price_title:"Precios claros, sin sorpresas",
-    p1_name:"Starter", p1_freq:"Pago único", p1_del:"⚡ Entrega en 1–2 días",
-    p1_f1:"Chatbot IA en tu web actual", p1_f2:"Entrenado con tus FAQs y servicios", p1_f3:"Activo 24/7, captura leads",
-    p2_badge:"Más popular", p2_name:"Estándar", p2_freq:"Pago único", p2_del:"⚡ Entrega en 3–5 días",
-    p2_f1:"Nueva web en Carrd", p2_f2:"Chatbot IA incluido", p2_f3:"Diseño responsive para móvil", p2_f4:"Sistema de captura de leads",
-    p3_name:"Premium", p3_freq:"Pago único", p3_del:"⚡ Entrega en 3–5 días",
-    p3_f1:"Web + Chatbot IA", p3_f2:"3 meses de mantenimiento incluidos", p3_f3:"Soporte prioritario", p3_f4:"Reentrenamiento del bot incluido",
-    p4_name:"Mantenimiento Mensual", p4_freq:"/mes", p4_del:"🔄 Servicio continuo",
-    p4_f1:"Actualizaciones del sitio y contenido", p4_f2:"Gestión del chatbot", p4_f3:"Monitoreo del rendimiento",
-    p5_name:"Actualización Tidio", p5_freq:"Tarifa de activación", p5_del:"⚡ Entrega en 1–2 días",
-    p5_f1:"Reconstrucción con Tidio IA", p5_f2:"Mejores flujos de automatización", p5_f3:"Cobra más con IA premium",
-    btn_wa:"Pedir por WhatsApp", btn_iban:"🏦 Pagar por transferencia bancaria",
-    ai_label:"Chatbot IA", ai_title:"Un empleado que nunca duerme",
-    ai_desc:"Tu asistente IA conoce tu negocio a fondo. Responde al instante, recoge datos de clientes y te avisa solo cuando es necesario.",
-    ai_f1:"Responde FAQs automáticamente, 24/7", ai_f2:"Reserva citas y captura leads",
-    ai_f3:"Habla con la voz de tu marca", ai_f4:"Cada vez más inteligente con tu negocio",
-    chat1:"¡Hola! Bienvenido a Rosa's Bakery 🍞 ¿En qué puedo ayudarte hoy?",
-    chat2:"¿Hacen tartas personalizadas para cumpleaños?",
-    chat3:"¡Por supuesto! Rosa está especializada en tartas personalizadas desde €65. ¿Quieres reservar una degustación?",
-    chat4:"¡Sí! El sábado que viene me viene bien.",
-    how_label:"Cómo funciona", how_title:"De la idea al sitio online en pocos días",
-    step1_t:"Escríbenos", step1_d:"Cuéntanos tu negocio. Respondemos rápido con unas pocas preguntas.",
-    step2_t:"Lo construimos", step2_d:"Diseñamos el sitio y configuramos el chatbot entrenado con tus servicios.",
-    step3_t:"Tú revisas", step3_d:"Te mostramos una vista previa. Dinos los cambios — nosotros lo gestionamos todo.",
-    step4_t:"¡En vivo! 🎉", step4_d:"Tu sitio está online. Los clientes te encuentran y reservan de inmediato.",
-    cta_title:"¿Listo para hacer crecer tu empresa online?",
-    cta_sub:"Escríbenos por WhatsApp — respondemos en pocas horas, sin compromiso.",
-    cta_btn:"Escríbenos por WhatsApp", cta_ghost:"Ver paquetes",
-    footer_copy:"© 2026 Nexus Studio. Todos los derechos reservados."
-  },
-  fr: {
-    nav_services:"Services", nav_pricing:"Tarifs", nav_how:"Comment ça marche", nav_cta:"Écrivez-nous",
-    hero_badge:"Web & IA pour les Petites Entreprises",
-    hero_title:"Votre entreprise mérite un super site web et un assistant IA intelligent.",
-    hero_sub:"Nous créons des sites web modernes avec des chatbots IA intégrés qui travaillent 24h/24 — pour aider les petites entreprises à grandir sans embaucher.",
-    hero_cta:"Écrivez-nous sur WhatsApp", hero_cta2:"Voir les forfaits",
-    stat1:"Sites créés", stat2:"Support IA 24h/24", stat3:"Augmentation moyenne des clients",
-    svc_label:"Ce que nous proposons", svc_title:"Tout ce qu'une petite entreprise a besoin pour briller en ligne",
-    svc1_name:"Chatbot IA en complément", svc1_desc:"Vous avez déjà un site ? Nous intégrons un chatbot IA intelligent qui répond aux questions, capture des prospects et prend des rendez-vous — 24h/24.",
-    svc2_name:"Site Web + Chatbot IA", svc2_desc:"Un tout nouveau site sur Carrd avec assistant IA entièrement intégré. Rapide, moderne, mobile-first — prêt en quelques jours.",
-    svc3_name:"Forfait Premium Complet", svc3_desc:"Site + chatbot + 3 mois de maintenance. Nous gérons tout pour que vous puissiez vous concentrer sur votre activité.",
-    svc4_name:"Maintenance Mensuelle", svc4_desc:"Mises à jour régulières, gestion du chatbot et support prioritaire. Votre site reste rapide, à jour et parfaitement fonctionnel.",
-    price_label:"Forfaits de Service", price_title:"Tarifs clairs, sans surprises",
-    p1_name:"Starter", p1_freq:"Paiement unique", p1_del:"⚡ Livraison en 1–2 jours",
-    p1_f1:"Chatbot IA sur votre site existant", p1_f2:"Formé sur vos FAQ et services", p1_f3:"Actif 24h/24, capture de prospects",
-    p2_badge:"Le plus demandé", p2_name:"Standard", p2_freq:"Paiement unique", p2_del:"⚡ Livraison en 3–5 jours",
-    p2_f1:"Nouveau site sur Carrd", p2_f2:"Chatbot IA inclus", p2_f3:"Design responsive mobile", p2_f4:"Système de capture de prospects",
-    p3_name:"Premium", p3_freq:"Paiement unique", p3_del:"⚡ Livraison en 3–5 jours",
-    p3_f1:"Site Web + Chatbot IA", p3_f2:"3 mois de maintenance inclus", p3_f3:"Support prioritaire", p3_f4:"Réentraînement du bot inclus",
-    p4_name:"Maintenance Mensuelle", p4_freq:"/mois", p4_del:"🔄 Service continu",
-    p4_f1:"Mises à jour du site et contenus", p4_f2:"Gestion du chatbot", p4_f3:"Surveillance des performances",
-    p5_name:"Mise à niveau Tidio", p5_freq:"Frais d'activation", p5_del:"⚡ Livraison en 1–2 jours",
-    p5_f1:"Reconstruction avec Tidio IA", p5_f2:"Meilleures automatisations", p5_f3:"Facturez plus avec l'IA premium",
-    btn_wa:"Commander sur WhatsApp", btn_iban:"🏦 Payer par virement bancaire",
-    ai_label:"Chatbot IA", ai_title:"Un collaborateur qui ne dort jamais",
-    ai_desc:"Votre assistant IA connaît parfaitement votre activité. Il répond instantanément, recueille les informations clients et vous contacte uniquement quand c'est nécessaire.",
-    ai_f1:"Répond aux FAQ automatiquement, 24h/24", ai_f2:"Prend des rendez-vous et capture des prospects",
-    ai_f3:"Parle avec la voix de votre marque", ai_f4:"Devient plus intelligent avec votre croissance",
-    chat1:"Bonjour ! Bienvenue chez Rosa's Bakery 🍞 Comment puis-je vous aider aujourd'hui ?",
-    chat2:"Faites-vous des gâteaux personnalisés pour les anniversaires ?",
-    chat3:"Absolument ! Rosa est spécialisée dans les gâteaux personnalisés à partir de 65€. Voulez-vous réserver une dégustation ?",
-    chat4:"Oui ! Samedi prochain me convient parfaitement.",
-    how_label:"Comment ça marche", how_title:"De l'idée au site en ligne en quelques jours",
-    step1_t:"Écrivez-nous", step1_d:"Parlez-nous de votre activité. Nous répondons vite avec quelques questions simples.",
-    step2_t:"Nous construisons", step2_d:"Nous concevons le site et configurons le chatbot entraîné sur vos services.",
-    step3_t:"Vous révisez", step3_d:"Nous vous montrons un aperçu. Dites-nous les modifications — on gère tout.",
-    step4_t:"En ligne 🎉", step4_d:"Votre site est en ligne. Les clients vous trouvent et réservent immédiatement.",
-    cta_title:"Prêt à faire grandir votre entreprise en ligne ?",
-    cta_sub:"Écrivez-nous sur WhatsApp — nous répondons en quelques heures, sans engagement.",
-    cta_btn:"Écrivez-nous sur WhatsApp", cta_ghost:"Voir les forfaits",
-    footer_copy:"© 2026 Nexus Studio. Tous droits réservés."
-  },
-  de: {
-    nav_services:"Leistungen", nav_pricing:"Preise", nav_how:"So funktioniert's", nav_cta:"Schreib uns",
-    hero_badge:"Web & KI für Kleine Unternehmen",
-    hero_title:"Ihr Unternehmen verdient eine tolle Website und einen smarten KI-Assistenten.",
-    hero_sub:"Wir erstellen moderne Websites mit integrierten KI-Chatbots, die rund um die Uhr arbeiten — damit kleine Unternehmen ohne Neueinstellungen wachsen können.",
-    hero_cta:"Per WhatsApp schreiben", hero_cta2:"Pakete ansehen",
-    stat1:"Erstellte Websites", stat2:"KI-Support rund um die Uhr", stat3:"Durchschnittliche Kundensteigerung",
-    svc_label:"Was wir anbieten", svc_title:"Alles was ein kleines Unternehmen braucht, um online zu glänzen",
-    svc1_name:"KI-Chatbot Erweiterung", svc1_desc:"Haben Sie bereits eine Website? Wir integrieren einen smarten KI-Chatbot, der Fragen beantwortet, Leads erfasst und Termine bucht — 24/7.",
-    svc2_name:"Website + KI-Chatbot", svc2_desc:"Eine neue Website auf Carrd mit vollständig integriertem KI-Assistenten. Schnell, modern, mobile-first — in wenigen Tagen fertig.",
-    svc3_name:"Premium-Komplettpaket", svc3_desc:"Website + Chatbot + 3 Monate Wartung. Wir kümmern uns um alles, damit Sie sich auf Ihr Geschäft konzentrieren können.",
-    svc4_name:"Monatliche Wartung", svc4_desc:"Laufende Updates, Chatbot-Management und vorrangiger Support. Ihre Website bleibt schnell, aktuell und perfekt funktionsfähig.",
-    price_label:"Service-Pakete", price_title:"Klare Preise, keine Überraschungen",
-    p1_name:"Starter", p1_freq:"Einmalzahlung", p1_del:"⚡ Lieferung in 1–2 Tagen",
-    p1_f1:"KI-Chatbot auf Ihrer bestehenden Website", p1_f2:"Trainiert auf Ihre FAQs und Leistungen", p1_f3:"24/7 aktiv, erfasst Leads",
-    p2_badge:"Am beliebtesten", p2_name:"Standard", p2_freq:"Einmalzahlung", p2_del:"⚡ Lieferung in 3–5 Tagen",
-    p2_f1:"Neue Website auf Carrd", p2_f2:"KI-Chatbot inklusive", p2_f3:"Responsives Mobile-Design", p2_f4:"Lead-Erfassungssystem",
-    p3_name:"Premium", p3_freq:"Einmalzahlung", p3_del:"⚡ Lieferung in 3–5 Tagen",
-    p3_f1:"Website + KI-Chatbot", p3_f2:"3 Monate Wartung inklusive", p3_f3:"Vorrangiger Support", p3_f4:"Bot-Nachtraining inklusive",
-    p4_name:"Monatliche Wartung", p4_freq:"/Monat", p4_del:"🔄 Laufender Service",
-    p4_f1:"Website-Updates und Inhalte", p4_f2:"Chatbot-Management", p4_f3:"Performance-Monitoring",
-    p5_name:"Tidio-Upgrade", p5_freq:"Einrichtungsgebühr", p5_del:"⚡ Lieferung in 1–2 Tagen",
-    p5_f1:"Neuaufbau mit Tidio KI", p5_f2:"Bessere Automatisierungsabläufe", p5_f3:"Mehr verdienen mit Premium-KI",
-    btn_wa:"Per WhatsApp bestellen", btn_iban:"🏦 Per Banküberweisung bezahlen",
-    ai_label:"KI-Chatbot", ai_title:"Ein Mitarbeiter, der nie schläft",
-    ai_desc:"Ihr KI-Assistent kennt Ihr Unternehmen in- und auswendig. Er antwortet sofort, sammelt Kundendaten und meldet sich nur bei Bedarf bei Ihnen.",
-    ai_f1:"Beantwortet FAQs automatisch, 24/7", ai_f2:"Bucht Termine und erfasst Leads",
-    ai_f3:"Spricht mit der Stimme Ihrer Marke", ai_f4:"Wird mit Ihrem Wachstum immer intelligenter",
-    chat1:"Hallo! Willkommen bei Rosa's Bakery 🍞 Wie kann ich Ihnen heute helfen?",
-    chat2:"Machen Sie individuelle Geburtstagstorten?",
-    chat3:"Absolut! Rosa ist auf individuelle Torten ab $65 spezialisiert. Möchten Sie eine Kostprobe buchen?",
-    chat4:"Ja! Nächsten Samstag passt mir sehr gut.",
-    how_label:"So funktioniert's", how_title:"Von der Idee zur Live-Website in wenigen Tagen",
-    step1_t:"Schreiben Sie uns", step1_d:"Erzählen Sie uns von Ihrem Unternehmen. Wir antworten schnell mit ein paar einfachen Fragen.",
-    step2_t:"Wir bauen es", step2_d:"Wir gestalten die Website und richten den Chatbot ein, trainiert auf Ihre Leistungen.",
-    step3_t:"Sie prüfen", step3_d:"Wir zeigen Ihnen eine Vorschau. Teilen Sie uns Änderungen mit — wir kümmern uns um alles.",
-    step4_t:"Live gehen 🎉", step4_d:"Ihre Website ist online. Kunden finden Sie und können direkt buchen.",
-    cta_title:"Bereit, Ihr Unternehmen online zu vergrößern?",
-    cta_sub:"Schreiben Sie uns auf WhatsApp — wir antworten innerhalb von Stunden, ohne Verpflichtung.",
-    cta_btn:"Per WhatsApp schreiben", cta_ghost:"Pakete ansehen",
-    footer_copy:"© 2026 Nexus Studio. Alle Rechte vorbehalten."
-  }
-};
-
-function setLang(lang) {
-  currentLang = lang;
-  const d = T[lang]; if (!d) return;
-  document.querySelectorAll('[data-t]').forEach(el => {
-    const k = el.getAttribute('data-t');
-    if (d[k] !== undefined) el.textContent = d[k];
-  });
-  document.querySelectorAll('.lang-btn').forEach(btn => {
-    btn.classList.toggle('active', btn.textContent === lang.toUpperCase());
-  });
-  document.documentElement.lang = lang;
-}
-
-window.addEventListener('DOMContentLoaded', () => {
-  const b = (navigator.language || 'en').slice(0, 2).toLowerCase();
-  setLang(['en','it','es','fr','de'].includes(b) ? b : 'en');
-});
-</script>
-</body>
-</html>
+# ── BUILD ─────────────────────────────────────────────────────────────────────
+doc.build(story, onFirstPage=on_page, onLaterPages=on_page)
+print(f"PDF creato: {OUTPUT}")
