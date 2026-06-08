@@ -1,683 +1,972 @@
-from reportlab.lib.pagesizes import A4
-from reportlab.lib import colors
-from reportlab.lib.units import cm
-from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-from reportlab.lib.enums import TA_LEFT, TA_CENTER, TA_JUSTIFY
-from reportlab.platypus import (
-    SimpleDocTemplate, Paragraph, Spacer, HRFlowable, PageBreak,
-    Table, TableStyle, KeepTogether
-)
-from reportlab.pdfbase import pdfmetrics
-from reportlab.pdfbase.ttfonts import TTFont
-from reportlab.lib.colors import HexColor
+cat << 'JSEOF' > /home/claude/guide.js
+const {
+  Document, Packer, Paragraph, TextRun, Table, TableRow, TableCell,
+  HeadingLevel, AlignmentType, BorderStyle, WidthType, ShadingType,
+  VerticalAlign, LevelFormat, PageBreak, TableOfContents
+} = require('docx');
+const fs = require('fs');
 
-# ── Register DejaVu fonts (support Italian accents: à è é ì ò ù) ───────────
-BASE = "/usr/share/fonts/truetype/dejavu/"
-pdfmetrics.registerFont(TTFont("DJV",     BASE + "DejaVuSerif.ttf"))
-pdfmetrics.registerFont(TTFont("DJV-B",   BASE + "DejaVuSerif-Bold.ttf"))
-pdfmetrics.registerFont(TTFont("DJV-I",   BASE + "DejaVuSerif-Italic.ttf"))
-pdfmetrics.registerFont(TTFont("DJV-BI",  BASE + "DejaVuSerif-BoldItalic.ttf"))
-pdfmetrics.registerFont(TTFont("DJV-S",   BASE + "DejaVuSans.ttf"))
-pdfmetrics.registerFont(TTFont("DJV-SB",  BASE + "DejaVuSans-Bold.ttf"))
-pdfmetrics.registerFont(TTFont("DJV-SI",  BASE + "DejaVuSans-Oblique.ttf"))
-pdfmetrics.registerFont(TTFont("DJV-SBI", BASE + "DejaVuSans-BoldOblique.ttf"))
+// ── colour palette ───────────────────────────────────────────
+const C = {
+  phys:  "1A3A5C",  // dark navy  – Physics
+  chem:  "4A1A6B",  // deep purple – Chemistry
+  env:   "1A5C2A",  // forest green – Env Science
+  bio:   "7B2300",  // deep red-brown – Biology
+  box:   "EBF3FB",  // light blue box bg
+  warn:  "FFF3CD",  // amber warning
+  eg:    "E8F5E9",  // green example bg
+  head:  "1A3A5C",  // heading colour
+  white: "FFFFFF",
+  black: "000000",
+};
 
-# ── Colours ──────────────────────────────────────────────────────────────────
-DEEP_NAVY   = HexColor("#1A2340")
-GOLD        = HexColor("#C9A84C")
-LIGHT_GOLD  = HexColor("#F0D9A0")
-CREAM       = HexColor("#FAF7F2")
-DARK_TEXT   = HexColor("#1C1C1C")
-MID_GREY    = HexColor("#5A5A5A")
-ACCENT_LINE = HexColor("#8B6914")
-SECTION_BG  = HexColor("#F2EDE4")
-QUOTE_BG    = HexColor("#EDE8DF")
-W, H = A4
+// ── border helpers ───────────────────────────────────────────
+const nb = { style: BorderStyle.NONE, size: 0, color: "FFFFFF" };
+const sb = (col="AAAAAA") => ({ style: BorderStyle.SINGLE, size: 4, color: col });
+const noBorders = { top: nb, bottom: nb, left: nb, right: nb, insideHorizontal: nb, insideVertical: nb };
 
-# ── Page canvas callback ─────────────────────────────────────────────────────
-def on_page(c, doc):
-    c.saveState()
-    c.setFillColor(DEEP_NAVY)
-    c.rect(0, H - 1.05*cm, W, 1.05*cm, fill=1, stroke=0)
-    c.setFillColor(GOLD)
-    c.setFont("DJV-SB", 8)
-    c.drawString(2*cm, H - 0.70*cm, "IL FU MATTIA PASCAL  ·  Luigi Pirandello")
-    c.setFont("DJV-S", 8)
-    c.drawRightString(W - 2*cm, H - 0.70*cm, f"Pagina {doc.page}")
-    c.setStrokeColor(GOLD)
-    c.setLineWidth(0.7)
-    c.line(2*cm, 1.25*cm, W - 2*cm, 1.25*cm)
-    c.setFillColor(MID_GREY)
-    c.setFont("DJV-SI", 7)
-    c.drawCentredString(W/2, 0.72*cm, "Portfolio Analitico  ·  Mattia Pascal e Luigi Pirandello")
-    c.restoreState()
-
-# ── Styles ───────────────────────────────────────────────────────────────────
-def S(name, **kw):
-    return ParagraphStyle(name, **kw)
-
-T_TITLE  = S("ttitle",  fontName="DJV-B",  fontSize=32, leading=38,
-              textColor=CREAM,      alignment=TA_CENTER, spaceAfter=8)
-T_SUB    = S("tsub",    fontName="DJV-I",  fontSize=14, leading=18,
-              textColor=LIGHT_GOLD, alignment=TA_CENTER, spaceAfter=4)
-T_AUTH   = S("tauth",   fontName="DJV-S",  fontSize=10, leading=13,
-              textColor=LIGHT_GOLD, alignment=TA_CENTER)
-
-S_NUM    = S("snum",    fontName="DJV-SB", fontSize=8,  textColor=GOLD, spaceAfter=0)
-S_HEAD   = S("shead",   fontName="DJV-B",  fontSize=15, leading=19,
-              textColor=DEEP_NAVY,  spaceBefore=6, spaceAfter=4)
-SH_HEAD  = S("shhead",  fontName="DJV-B",  fontSize=11, leading=14,
-              textColor=ACCENT_LINE, spaceBefore=10, spaceAfter=4)
-BODY     = S("body",    fontName="DJV",    fontSize=10, leading=15.5,
-              textColor=DARK_TEXT,  alignment=TA_JUSTIFY, spaceAfter=7)
-QUOT     = S("quot",    fontName="DJV-I",  fontSize=10, leading=15,
-              textColor=HexColor("#3D2B00"), alignment=TA_JUSTIFY,
-              leftIndent=18, rightIndent=18, spaceAfter=4, spaceBefore=4)
-QUOT_SRC = S("qsrc",    fontName="DJV-S",  fontSize=8.5, leading=11,
-              textColor=MID_GREY,   leftIndent=18, spaceAfter=8)
-TOC_S    = S("tocs",    fontName="DJV",    fontSize=11, leading=17, textColor=DARK_TEXT)
-TOC_N    = S("tocn",    fontName="DJV-B",  fontSize=11, leading=17, textColor=DEEP_NAVY)
-
-# ── Helpers ───────────────────────────────────────────────────────────────────
-def hr(col=GOLD, w=1.0):
-    return HRFlowable(width="100%", thickness=w, color=col, spaceAfter=8, spaceBefore=4)
-
-def sec_header(num, title):
-    return [
-        Spacer(1, 0.35*cm),
-        hr(GOLD, 1.3),
-        Paragraph(f"Sezione {num}", S_NUM),
-        Paragraph(title, S_HEAD),
-        hr(SECTION_BG, 3),
-        Spacer(1, 0.12*cm),
-    ]
-
-def qblock(text, src=""):
-    r = [Paragraph(f"\u201c{text}\u201d", QUOT)]
-    if src:
-        r.append(Paragraph(f"\u2014 {src}", QUOT_SRC))
-    return r
-
-def evc(text):
-    inner_h = S("ih", fontName="DJV-SB", fontSize=8,  textColor=GOLD)
-    inner_b = S("ib", fontName="DJV",    fontSize=9.5, leading=14,
-                textColor=DARK_TEXT, alignment=TA_JUSTIFY)
-    label = Paragraph("\u25c6 ANALISI CRITICA E VALUTAZIONE", inner_h)
-    body  = Paragraph(text, inner_b)
-    t = Table([[label], [body]],
-              colWidths=[W - 4*cm - 2*1.5*cm])
-    t.setStyle(TableStyle([
-        ("BACKGROUND",   (0,0),(-1,-1), HexColor("#EAE2D2")),
-        ("BOX",          (0,0),(-1,-1), 1.2, GOLD),
-        ("LINEBELOW",    (0,0),(-1,0),  0.8, GOLD),
-        ("TOPPADDING",   (0,0),(-1,-1), 7),
-        ("BOTTOMPADDING",(0,0),(-1,-1), 7),
-        ("LEFTPADDING",  (0,0),(-1,-1), 10),
-        ("RIGHTPADDING", (0,0),(-1,-1), 10),
-    ]))
-    return [Spacer(1,0.18*cm), t, Spacer(1,0.22*cm)]
-
-# ════════════════════════════════════════════════════════════════════════════
-#  CONTENT (in Italian)
-# ════════════════════════════════════════════════════════════════════════════
-
-sections = [
-
-    # ── 1. Bad Faith ─────────────────────────────────────────────────────────
-    {
-        "num": 1,
-        "title": "La Malafede e l\u2019Inautenticit\u00e0",
-        "toc": "La Malafede e l\u2019Inautenticit\u00e0",
-        "subs": [
-            {
-                "h": "Mattia Pascal come personaggio in malafede",
-                "b": (
-                    "All\u2019inizio del romanzo <i>Il fu Mattia Pascal</i> di Pirandello, il protagonista "
-                    "incarna perfettamente ci\u00f2 che Sartre definisce <i>mauvaise foi</i>, ovvero "
-                    "\u2018malafede\u2019. Mattia non si ribella alla vita insoddisfacente che conduce; al "
-                    "contrario, si arrende passivamente ad essa, lasciando che la convenzione sociale e "
-                    "l\u2019aspettativa morale guidino ogni sua scelta. Sposa Romilda non per amore, ma "
-                    "per un senso di obbligo morale scaturito dalla gravidanza di lei: \u2018cominciai a "
-                    "preparare mia madre alla notizia delle mie prossime nozze, ormai inevitabili, per "
-                    "ragioni di coscienza\u2019. Questa confessione rivela il motore della sua malafede: "
-                    "la coscienza e il dovere sociale soffocano la libert\u00e0 personale."
-                ),
-                "quotes": [
-                    ("Mi vidi, in quell\u2019istante, come l\u2019attore di una tragedia pi\u00f9 comica "
-                     "di quanto chiunque avrebbe potuto immaginare.",
-                     "Pirandello, Il fu Mattia Pascal"),
-                ],
-                "evc": (
-                    "Sartre illustra la malafede attraverso la metafora del cameriere che esegue il suo "
-                    "ruolo con precisione esagerata, come se fosse nato per servire. Mattia rispecchia "
-                    "esattamente questa condizione: assume il ruolo di marito, bibliotecario e genero con "
-                    "una rassegnazione che equivale all\u2019autoinganno. La scelta di Pirandello di far "
-                    "descrivere Mattia come \u2018attore\u2019 nella propria vita non \u00e8 solo "
-                    "stilistica \u2014 \u00e8 filosoficamente significativa: segnala che il protagonista "
-                    "ha scambiato la propria autenticit\u00e0 con un\u2019identit\u00e0 recitata."
-                )
-            },
-            {
-                "h": "La routine come prigione esistenziale",
-                "b": (
-                    "La malafede di Mattia si consolida attraverso l\u2019intrappolamento in una routine "
-                    "ripetitiva. Lavora come bibliotecario \u2014 ruolo mai scelto con entusiasmo \u2014 "
-                    "e osserva i propri giorni dissolversi nell\u2019uniformit\u00e0. Il terrore di "
-                    "diventare come il collega anziano Romitelli, che legge ossessivamente solo perch\u00e9 "
-                    "\u2018la biblioteca era fatta per leggere\u2019, rappresenta un momento di lucida "
-                    "autoconsapevolezza: Mattia percepisce l\u2019assurdit\u00e0 di una vita vissuta in "
-                    "conformit\u00e0 a un ruolo imposto dall\u2019esterno. Tuttavia, riconoscere la "
-                    "malafede ed evaderne sono due cose del tutto diverse. Egli rimane intrappolato, "
-                    "usando la metafora del mare \u2014 onde che si ritirano senza sosta, sabbia che "
-                    "scivola tra le dita \u2014 per evocare la monotonia schiacciante di una vita che "
-                    "non ha il coraggio di trasformare."
-                ),
-                "quotes": [
-                    ("La vista del mare mi riempiva di uno stupito sgomento che diventava a poco a poco "
-                     "un\u2019oppressione insopportabile\u2026 \u2018Cos\u00ec, sempre, fino alla morte, "
-                     "senza nessun cambiamento, mai\u2019.",
-                     "Pirandello, Il fu Mattia Pascal"),
-                ],
-                "evc": (
-                    "Questo passaggio \u00e8 tra i pi\u00f9 sartriani dell\u2019intero romanzo. Il mare "
-                    "funziona come correlativo oggettivo della stagnazione esistenziale di Mattia: "
-                    "naturale, ciclico e del tutto indifferente all\u2019agentivit\u00e0 umana. La "
-                    "ripetizione di \u2018sempre\u2026 senza nessun cambiamento, mai\u2019 cattura la "
-                    "permanenza soffocante che Sartre associa alla malafede: il momento in cui un essere "
-                    "libero si \u00e8 ridotto alla prevedibile rigidit\u00e0 di una cosa."
-                )
-            },
-            {
-                "h": "Incolpare gli altri: la malafede proiettata verso l'esterno",
-                "b": (
-                    "Una dimensione pi\u00f9 sottile della malafede di Mattia \u00e8 la sua tendenza "
-                    "abituale a spostare la responsabilit\u00e0 sugli altri. Di fronte ai debiti "
-                    "accumulati dalla famiglia dopo la morte del padre, rifiuta di riconoscere la propria "
-                    "capacit\u00e0 di agire: \u2018Intanto, si andava sempre pi\u00f9 in rovina, e io "
-                    "non potevo fare nulla\u2019. Allo stesso tempo incolpa la madre e la assolve, "
-                    "un gioco psicologico che gli permette di restare passivo pur sentendosi moralmente "
-                    "superiore. Per Sartre, tali manovre sono il segno distintivo della malafede: negare "
-                    "la libert\u00e0 non solo in s\u00e9 stessi, ma, per estensione, anche negli altri."
-                ),
-                "quotes": [],
-                "evc": (
-                    "Il ritratto di Mattia come narratore inaffidabile \u2014 autocommiserante eppure "
-                    "consapevole di s\u00e9 \u2014 aggiunge un ricco strato ironico. Il lettore vede "
-                    "la contraddizione che Mattia stesso non riesce pienamente ad ammettere: \u00e8 un "
-                    "uomo che capisce di essere libero ma rifiuta sistematicamente di agire come tale. "
-                    "Questo divario tra consapevolezza e azione \u00e8 esattamente ci\u00f2 che lo rende "
-                    "un avvincente anti-eroe esistenzialista."
-                )
-            },
-        ]
+// ── numbering config ─────────────────────────────────────────
+const numbering = {
+  config: [
+    { reference: "bullets",
+      levels: [{ level: 0, format: LevelFormat.BULLET, text: "\u2022",
+        alignment: AlignmentType.LEFT,
+        style: { paragraph: { indent: { left: 720, hanging: 360 } },
+                 run: { font: "Arial" } } }]
     },
-
-    # ── 2. Angoscia Esistenziale ──────────────────────────────────────────────
-    {
-        "num": 2,
-        "title": "L\u2019Angoscia Esistenziale e l\u2019Assurdo",
-        "toc": "L\u2019Angoscia Esistenziale e l\u2019Assurdo",
-        "subs": [
-            {
-                "h": "L'architettura dell'angoscia di Mattia",
-                "b": (
-                    "L\u2019angoscia esistenziale nel quadro sartriano non \u00e8 semplice infelicit\u00e0: "
-                    "\u00e8 la consapevolezza acuta che il mondo non offre alcun significato "
-                    "pre-stabilito, che i ruoli sociali sono costruzioni arbitrarie. Mattia giunge a "
-                    "questa consapevolezza attraverso la figura di Romitelli, la cui dedizione meccanica "
-                    "alla catalogazione di libri irrilevanti, mentre la morte si avvicina, gli appare come "
-                    "l\u2019apoteosi dell\u2019assurdo. Osservando Romitelli, Mattia sta in realt\u00e0 "
-                    "confrontandosi con un possibile s\u00e9 futuro: un uomo che si \u00e8 consegnato "
-                    "interamente al proprio ruolo e ha dimenticato che la libert\u00e0 era mai stata "
-                    "un\u2019opzione."
-                ),
-                "quotes": [
-                    ("La noia mi aveva roso dentro, e allentato il filo.",
-                     "Pirandello, Il fu Mattia Pascal"),
-                    ("Qualunque cosa, qualunque cosa sarebbe meglio di questa agonia della mente, "
-                     "di questo dolore strisciante che rode e cincischia e accarezza senza mai far "
-                     "abbastanza male.",
-                     "Sartre, A porte chiuse (1944)"),
-                ],
-                "evc": (
-                    "Il parallelismo tra la \u2018noia che rode dall\u2019interno\u2019 di Mattia e i "
-                    "personaggi di Sartre in <i>A porte chiuse</i> \u00e8 notevole. Entrambi gli autori "
-                    "ricorrono a un linguaggio viscerale, quasi corporeo, per descrivere una condizione "
-                    "psicologica \u2014 rodere, corrodere, strisciare \u2014 come se la mancanza di "
-                    "senso fosse un parassita fisico. Questa risonanza intertestuale suggerisce che "
-                    "Pirandello e Sartre stavano esplorando lo stesso territorio: la violenza che il vuoto "
-                    "di senso infligge a una coscienza."
-                )
-            },
-            {
-                "h": "Mattia e Roquentin: una lettura comparativa",
-                "b": (
-                    "Il confronto pi\u00f9 produttivo per comprendere l\u2019angoscia di Mattia \u00e8 "
-                    "quello con Antoine Roquentin, narratore del romanzo sartriano <i>La Nausea</i> "
-                    "(1938). Entrambi i personaggi sperimentano una crescente insoddisfazione per il "
-                    "proprio ruolo professionale \u2014 Mattia in biblioteca, Roquentin nelle sue "
-                    "ricerche storiche \u2014 e sono sopraffatti dalla realizzazione che il mondo esiste "
-                    "senza una ragione particolare. Il loro disagio non \u00e8 situazionale ma "
-                    "ontologico: deriva dal confrontarsi con la pura contingenza dell\u2019esistenza, "
-                    "con il fatto che le cose semplicemente sono, senza scopo o necessit\u00e0."
-                ),
-                "quotes": [
-                    ("Le cose vanno male! Le cose vanno molto male: ce l\u2019ho, il sudiciume, "
-                     "la Nausea.",
-                     "Sartre, La Nausea (1938)"),
-                ],
-                "evc": (
-                    "Pirandello scrisse <i>Il fu Mattia Pascal</i> nel 1904, oltre trent\u2019anni prima "
-                    "che Sartre formalizzasse l\u2019esistenzialismo. La convergenza tra i due testi "
-                    "ha quindi un peso critico significativo: implica che Pirandello stesse esplorando "
-                    "autonomamente temi esistenzialisti, raggiungendo conclusioni simili attraverso "
-                    "mezzi letterari anzi\u00e8 filosofici. Sartre stesso riconobbe questo debito, "
-                    "lodando Pirandello come \u2018il pi\u00f9 attuale dei drammaturghi moderni\u2019."
-                )
-            },
-            {
-                "h": "La perdita come catalizzatore dell'azione",
-                "b": (
-                    "La morte delle due figlie e della madre rappresenta il punto di rottura psicologica "
-                    "in cui l\u2019angoscia diventa troppo intensa per essere soppressa. Le ancore "
-                    "familiari della routine \u2014 il suo ruolo di padre e figlio \u2014 vengono "
-                    "spazzate via, lasciandolo con un senso insopportabile di vuoto: <i>\u2018non "
-                    "potevo pi\u00f9 reggere la noia, o peggio, il disgusto di me stesso\u2026 un "
-                    "impulso improvviso mi aveva fatto fuggire dal paese\u2019</i>. Questa fuga non "
-                    "\u00e8 ancora libert\u00e0 autentica \u2014 \u00e8 reattiva, impulsiva \u2014 "
-                    "ma \u00e8 la prima crepa nel muro della malafede, forzata dal dolore."
-                ),
-                "quotes": [],
-                "evc": (
-                    "Nella letteratura esistenzialista, la perdita estrema funge spesso da evento "
-                    "precipitante che spinge l\u2019eroe fuori dalla malafede. \u00c8 significativo "
-                    "che Pirandello scelga il lutto piuttosto che un momento di illuminazione "
-                    "intellettuale: suggerisce che la libert\u00e0 non viene abbracciata per scelta "
-                    "razionale, ma imposta dall\u2019esperienza vissuta. Questo lo rende una "
-                    "prospettiva pi\u00f9 sfumata e umana rispetto alla teoria pura di Sartre."
-                )
-            },
-        ]
+    { reference: "numbers",
+      levels: [{ level: 0, format: LevelFormat.DECIMAL, text: "%1.",
+        alignment: AlignmentType.LEFT,
+        style: { paragraph: { indent: { left: 720, hanging: 360 } },
+                 run: { font: "Arial" } } }]
     },
-
-    # ── 3. Identit\u00e0 e Reinvenzione ─────────────────────────────────────────
-    {
-        "num": 3,
-        "title": "Identit\u00e0, Reinvenzione e Maschera",
-        "toc": "Identit\u00e0, Reinvenzione e Maschera",
-        "subs": [
-            {
-                "h": "La nascita di Adriano Meis",
-                "b": (
-                    "La decisione di Mattia di abbandonare la propria identit\u00e0 e reinventarsi come "
-                    "Adriano Meis \u00e8 la svolta centrale del romanzo. Apparentemente, questa "
-                    "\u00e8 la concretizzazione della libert\u00e0 sartriana: la scelta radicale di "
-                    "ridefinire la propria essenza attraverso l\u2019azione. Tuttavia, Pirandello mostra "
-                    "che si tratta di un\u2019altra forma di malafede. Mattia non abbraccia la "
-                    "responsabilit\u00e0 che la libert\u00e0 comporta; al contrario, usa la sua nuova "
-                    "identit\u00e0 per sfuggirle. Si preoccupa ossessivamente dell\u2019aspetto fisico, "
-                    "si inventa un\u2019infanzia in America e nega ogni legame con il passato."
-                ),
-                "quotes": [
-                    ("Per cominciare, ero andato, poche ore prima di partire, da un barbiere a farmi "
-                     "tagliare la barba: avevo voluto toglierla del tutto, insieme ai baffi.",
-                     "Pirandello, Il fu Mattia Pascal"),
-                ],
-                "evc": (
-                    "La Teoria della Maschera di Pirandello, elaborata anche nei <i>Sei personaggi in "
-                    "cerca d\u2019autore</i>, trova qui la sua pi\u00f9 chiara illustrazione narrativa. "
-                    "La maschera di Adriano Meis non libera Mattia: lo intrappola ulteriormente, poich\u00e9 "
-                    "costruita sulla negazione di ci\u00f2 che \u00e8 stato. Sartre direbbe che una "
-                    "libert\u00e0 esercitata senza responsabilit\u00e0 non \u00e8 vera libert\u00e0 "
-                    "ma un\u2019altra forma di fuga."
-                )
-            },
-            {
-                "h": "Libert\u00e0 senza responsabilit\u00e0: un\u2019illusione",
-                "b": (
-                    "Sartre \u00e8 esplicito in <i>L\u2019esistenzialismo \u00e8 un umanismo</i>: la "
-                    "responsabilit\u00e0 \u00e8 parte integrante della libert\u00e0. Scegliendo come "
-                    "agire, l\u2019individuo crea un\u2019immagine di ci\u00f2 che l\u2019umanit\u00e0 "
-                    "dovrebbe essere. Mattia invece respinge la propria responsabilit\u00e0: fugge dai "
-                    "debiti, abbandona la famiglia, si esclude da qualsiasi legame. Ritiene che la "
-                    "sua buona fortuna consista nell\u2019essere stato liberato dalla moglie, dalla "
-                    "suocera, dai debiti. \u00c8 quindi inconsapevole di questo fattore centrale della "
-                    "libert\u00e0 esistenziale: non si pu\u00f2 essere autenticamente liberi senza "
-                    "riconoscere ed accettare la propria schiacciante responsabilit\u00e0."
-                ),
-                "quotes": [
-                    ("La mia buona fortuna consisteva precisamente in questo: che ero stato liberato "
-                     "di mia moglie, di mia suocera, dei miei debiti e delle umilianti complicazioni "
-                     "della mia prima vita.",
-                     "Pirandello, Il fu Mattia Pascal"),
-                ],
-                "evc": (
-                    "Questo \u00e8 uno dei momenti pi\u00f9 ironici del romanzo. Ci\u00f2 che Mattia "
-                    "celebra come liberazione \u00e8, agli occhi di Sartre, esattamente l\u2019opposto: "
-                    "uno stratagemma per eludere il peso dell\u2019esistenza autentica. La \u2018buona "
-                    "fortuna\u2019 di Mattia \u00e8 in realt\u00e0 la sua condanna a una nuova, "
-                    "pi\u00f9 profonda forma di malafede."
-                )
-            },
-            {
-                "h": "I limiti della nuova vita: la libert\u00e0 come illusione",
-                "b": (
-                    "La vita come Adriano Meis si rivela presto pi\u00f9 limitante della precedente. "
-                    "Mattia non pu\u00f2 comprare casa, non pu\u00f2 avere un cane, non pu\u00f2 "
-                    "denunciare il furto subito senza rivelare la propria falsa identit\u00e0. "
-                    "L\u2019esclusione volontaria dalla struttura sociale lo priva degli stessi "
-                    "strumenti che rendono possibile l\u2019azione libera nel mondo. Pirandello "
-                    "dimostra cos\u00ec che la libert\u00e0 non \u00e8 uno stato assoluto conquistabile "
-                    "attraverso la fuga: \u00e8 sempre mediata dal contesto sociale e relazionale."
-                ),
-                "quotes": [
-                    ("Avevo gi\u00e0 sperimentato come la mia libert\u00e0, che dapprima mi era sembrata "
-                     "illimitata, avesse purtroppo dei limiti\u2026 mi ero anche accorto che poteva "
-                     "pi\u00f9 propriamente chiamarsi solitudine e noia.",
-                     "Pirandello, Il fu Mattia Pascal"),
-                ],
-                "evc": (
-                    "Questo punto \u00e8 dove Pirandello si distacca da Sartre e si avvicina a Simone "
-                    "de Beauvoir. Mentre Sartre proclama la libert\u00e0 assoluta dell\u2019individuo "
-                    "indipendentemente dalle circostanze esterne, de Beauvoir sottolinea che la "
-                    "faticit\u00e0 \u2014 i fatti inescapabili della nostra situazione \u2014 limita "
-                    "concretamente le nostre scelte. Mattia, escluso dalla struttura sociale, lo "
-                    "scopre con dolorosa evidenza."
-                )
-            },
-        ]
+    { reference: "alpha",
+      levels: [{ level: 0, format: LevelFormat.LOWER_LETTER, text: "(%1)",
+        alignment: AlignmentType.LEFT,
+        style: { paragraph: { indent: { left: 720, hanging: 360 } },
+                 run: { font: "Arial" } } }]
     },
+  ]
+};
 
-    # ── 4. Societ\u00e0 e Faticit\u00e0 ─────────────────────────────────────────
-    {
-        "num": 4,
-        "title": "Societ\u00e0, Faticit\u00e0 e Libert\u00e0 Limitata",
-        "toc": "Societ\u00e0, Faticit\u00e0 e Libert\u00e0 Limitata",
-        "subs": [
-            {
-                "h": "Il ruolo sociale come gabbia e ancora",
-                "b": (
-                    "Pirandello presenta la struttura sociale come ambivalente: da un lato opprime "
-                    "l\u2019individuo imponendo ruoli predefiniti; dall\u2019altro, fornisce il "
-                    "framework senza il quale l\u2019azione autentica diventa impossibile. Mattia "
-                    "vive entrambe le dimensioni. Prima soffoca nella sua identit\u00e0 sociale di "
-                    "marito e bibliotecario; poi, privato di quella stessa identit\u00e0, si trova "
-                    "incapace di agire nel mondo. Il romanzo suggerisce quindi che la libert\u00e0 "
-                    "non \u00e8 l\u2019assenza di struttura, ma un modo diverso di abitarla."
-                ),
-                "quotes": [
-                    ("Non \u00e8 possibile vivere fuori dalla legge e fuori da quel groviglio di "
-                     "particolari, fortunosi o sfortunati come possono essere, che ci fanno quel che "
-                     "siamo.",
-                     "Pirandello, Il fu Mattia Pascal"),
-                ],
-                "evc": (
-                    "Questa citazione \u00e8 forse la pi\u00f9 esplicita presa di posizione filosofica "
-                    "di Pirandello nel romanzo, e coincide sorprendentemente con la critica di de "
-                    "Beauvoir a Sartre. L\u2019autore siciliano sembra anticipare l\u2019idea che la "
-                    "faticit\u00e0 \u2014 il contesto familiare, economico e sociale \u2014 non sia "
-                    "un ostacolo alla libert\u00e0 da eliminare, ma una condizione costitutiva "
-                    "dell\u2019esistenza umana."
-                )
-            },
-            {
-                "h": "La famiglia e il peso del passato",
-                "b": (
-                    "Le circostanze familiari di Mattia \u2014 i debiti ereditati dal padre, "
-                    "l\u2019incapacit\u00e0 della madre di gestire il denaro, il matrimonio indesiderato "
-                    "\u2014 costituiscono la sua faticit\u00e0 nel senso beauvoiriano: fatti "
-                    "inescapabili che restringono il campo delle sue scelte reali. Questi elementi "
-                    "non giustificano la sua malafede, ma la contestualizzano. Anche Sartre, nelle "
-                    "opere tarde influenzate dal marxismo, ammetterr\u00e0 che le circostanze limitano "
-                    "concretamente la libert\u00e0, pur senza eliminarla del tutto."
-                ),
-                "quotes": [],
-                "evc": (
-                    "La critica di de Beauvoir a Sartre \u00e8 particolarmente calzante nel caso di "
-                    "Mattia: sostenere che egli avrebbe potuto scegliere diversamente ignorando "
-                    "completamente il collasso economico familiare e le norme sociali del tardo "
-                    "Ottocento italiano significherebbe idealizzare la libert\u00e0 in modo astratto "
-                    "e irrealistico. Pirandello offre una visione pi\u00f9 incarnata e storicizzata "
-                    "della condizione umana."
-                )
-            },
-        ]
+// ── style helpers ────────────────────────────────────────────
+const styles = {
+  default: {
+    document: { run: { font: "Arial", size: 22 } }  // 11pt default
+  },
+  paragraphStyles: [
+    { id: "Heading1", name: "Heading 1", basedOn: "Normal", next: "Normal", quickFormat: true,
+      run: { size: 36, bold: true, font: "Arial", color: C.white },
+      paragraph: { spacing: { before: 0, after: 120 }, outlineLevel: 0,
+        shading: { fill: C.head, type: ShadingType.CLEAR } } },
+    { id: "Heading2", name: "Heading 2", basedOn: "Normal", next: "Normal", quickFormat: true,
+      run: { size: 28, bold: true, font: "Arial", color: C.head },
+      paragraph: { spacing: { before: 280, after: 100 }, outlineLevel: 1,
+        border: { bottom: { style: BorderStyle.SINGLE, size: 6, color: C.head, space: 1 } } } },
+    { id: "Heading3", name: "Heading 3", basedOn: "Normal", next: "Normal", quickFormat: true,
+      run: { size: 24, bold: true, font: "Arial", color: "333333" },
+      paragraph: { spacing: { before: 200, after: 80 }, outlineLevel: 2 } },
+  ]
+};
+
+// ── reusable paragraph builders ─────────────────────────────
+const p = (text, opts={}) => new Paragraph({
+  children: [new TextRun({ text, font: "Arial", size: opts.size||22,
+    bold: opts.bold||false, italics: opts.italic||false,
+    color: opts.color||C.black })],
+  spacing: { before: opts.before||60, after: opts.after||60, line: opts.line||276 },
+  alignment: opts.align||AlignmentType.LEFT,
+  indent: opts.indent ? { left: opts.indent } : undefined,
+});
+
+const h1 = (text, color) => new Paragraph({
+  heading: HeadingLevel.HEADING_1,
+  children: [new TextRun({ text, font: "Arial", size: 36, bold: true, color: C.white })],
+  shading: { fill: color||C.head, type: ShadingType.CLEAR },
+  spacing: { before: 0, after: 120 },
+});
+
+const h2 = (text) => new Paragraph({
+  heading: HeadingLevel.HEADING_2,
+  children: [new TextRun({ text, font: "Arial", size: 28, bold: true, color: C.head })],
+  border: { bottom: { style: BorderStyle.SINGLE, size: 6, color: C.head, space: 1 } },
+  spacing: { before: 300, after: 100 },
+});
+
+const h3 = (text) => new Paragraph({
+  heading: HeadingLevel.HEADING_3,
+  children: [new TextRun({ text, font: "Arial", size: 24, bold: true, color: "333333" })],
+  spacing: { before: 220, after: 80 },
+});
+
+// coloured box (shaded single-cell table)
+const box = (lines_arr, fill=C.box, borderCol="2E75B6") => {
+  const bord = { style: BorderStyle.SINGLE, size: 6, color: borderCol };
+  return new Table({
+    width: { size: 9026, type: WidthType.DXA },
+    columnWidths: [9026],
+    rows: [new TableRow({ children: [
+      new TableCell({
+        borders: { top: bord, bottom: bord, left: bord, right: bord },
+        shading: { fill, type: ShadingType.CLEAR },
+        margins: { top: 120, bottom: 120, left: 180, right: 180 },
+        width: { size: 9026, type: WidthType.DXA },
+        children: lines_arr.map(l => typeof l === 'string'
+          ? new Paragraph({ children: [new TextRun({ text: l, font: "Arial", size: 22 })],
+              spacing: { before: 40, after: 40, line: 276 } })
+          : l)
+      })
+    ]})],
+  });
+};
+
+const eg_box = (lines_arr) => box(lines_arr, C.eg, "2E7D32");
+const warn_box = (lines_arr) => box(lines_arr, C.warn, "E65100");
+
+const sp = (pt=100) => new Paragraph({ children: [new TextRun("")], spacing: { before: 0, after: pt } });
+
+const bullet = (text, bold_prefix="") => new Paragraph({
+  numbering: { reference: "bullets", level: 0 },
+  children: [
+    ...(bold_prefix ? [new TextRun({ text: bold_prefix+" ", font: "Arial", size: 22, bold: true })] : []),
+    new TextRun({ text, font: "Arial", size: 22 }),
+  ],
+  spacing: { before: 40, after: 40, line: 276 },
+});
+
+const num = (text, bold_prefix="") => new Paragraph({
+  numbering: { reference: "numbers", level: 0 },
+  children: [
+    ...(bold_prefix ? [new TextRun({ text: bold_prefix+" ", font: "Arial", size: 22, bold: true })] : []),
+    new TextRun({ text, font: "Arial", size: 22 }),
+  ],
+  spacing: { before: 40, after: 40, line: 276 },
+});
+
+// label + content inline
+const kv = (key, val) => new Paragraph({
+  children: [
+    new TextRun({ text: key+": ", font: "Arial", size: 22, bold: true }),
+    new TextRun({ text: val, font: "Arial", size: 22 }),
+  ],
+  spacing: { before: 60, after: 60, line: 276 },
+  indent: { left: 360 },
+});
+
+// simple 2-col table for formulas
+const formulaTable = (rows) => new Table({
+  width: { size: 9026, type: WidthType.DXA },
+  columnWidths: [3200, 5826],
+  rows: [
+    new TableRow({ children: [
+      new TableCell({
+        borders: { top: sb("2E75B6"), bottom: sb("2E75B6"), left: sb("2E75B6"), right: sb("2E75B6") },
+        shading: { fill: "D5E8F0", type: ShadingType.CLEAR },
+        margins: { top: 80, bottom: 80, left: 120, right: 120 },
+        width: { size: 3200, type: WidthType.DXA },
+        children: [new Paragraph({ children: [new TextRun({ text: "Formula / Step", font: "Arial", size: 22, bold: true })],
+          spacing: { before: 40, after: 40 } })]
+      }),
+      new TableCell({
+        borders: { top: sb("2E75B6"), bottom: sb("2E75B6"), left: sb("2E75B6"), right: sb("2E75B6") },
+        shading: { fill: "D5E8F0", type: ShadingType.CLEAR },
+        margins: { top: 80, bottom: 80, left: 120, right: 120 },
+        width: { size: 5826, type: WidthType.DXA },
+        children: [new Paragraph({ children: [new TextRun({ text: "Explanation", font: "Arial", size: 22, bold: true })],
+          spacing: { before: 40, after: 40 } })]
+      }),
+    ]}),
+    ...rows.map(([f, e]) => new TableRow({ children: [
+      new TableCell({
+        borders: { top: sb(), bottom: sb(), left: sb(), right: sb() },
+        margins: { top: 80, bottom: 80, left: 120, right: 120 },
+        width: { size: 3200, type: WidthType.DXA },
+        children: [new Paragraph({ children: [new TextRun({ text: f, font: "Courier New", size: 20, bold: true })],
+          spacing: { before: 40, after: 40 } })]
+      }),
+      new TableCell({
+        borders: { top: sb(), bottom: sb(), left: sb(), right: sb() },
+        margins: { top: 80, bottom: 80, left: 120, right: 120 },
+        width: { size: 5826, type: WidthType.DXA },
+        children: [new Paragraph({ children: [new TextRun({ text: e, font: "Arial", size: 22 })],
+          spacing: { before: 40, after: 40 } })]
+      }),
+    ]}))
+  ],
+});
+
+// page break
+const pgBreak = () => new Paragraph({
+  children: [new PageBreak()],
+  spacing: { before: 0, after: 0 },
+});
+
+// ════════════════════════════════════════════════════════════
+//  BUILD DOCUMENT
+// ════════════════════════════════════════════════════════════
+const children = [];
+
+// ── COVER ───────────────────────────────────────────────────
+children.push(sp(2000));
+children.push(new Paragraph({
+  children: [new TextRun({ text: "MYP Sciences — Criterion C", font: "Arial", size: 48, bold: true, color: C.head })],
+  alignment: AlignmentType.CENTER, spacing: { before: 0, after: 200 }
+}));
+children.push(new Paragraph({
+  children: [new TextRun({ text: "Complete Answer Guide", font: "Arial", size: 60, bold: true, color: C.head })],
+  alignment: AlignmentType.CENTER, spacing: { before: 0, after: 300 }
+}));
+children.push(new Paragraph({
+  border: { bottom: { style: BorderStyle.SINGLE, size: 12, color: C.head, space: 1 } },
+  children: [new TextRun("")], spacing: { before: 0, after: 300 }
+}));
+children.push(new Paragraph({
+  children: [new TextRun({ text: "How to answer every possible question — Physics, Chemistry, Environmental Science, Biology",
+    font: "Arial", size: 24, italics: true, color: "444444" })],
+  alignment: AlignmentType.CENTER, spacing: { before: 0, after: 600 }
+}));
+children.push(new Paragraph({
+  children: [new TextRun({ text: "For each subject you will find:", font: "Arial", size: 22, bold: true })],
+  alignment: AlignmentType.CENTER, spacing: { before: 0, after: 100 }
+}));
+[
+  "What every type of question is actually asking",
+  "Exact step-by-step method for every calculation",
+  "Word-for-word model answers for every written question type",
+  "Common mistakes and how to avoid them",
+  "The key vocabulary markers that earn marks",
+].forEach(t => children.push(new Paragraph({
+  children: [new TextRun({ text: "\u2022  "+t, font: "Arial", size: 22, color: "333333" })],
+  alignment: AlignmentType.CENTER, spacing: { before: 40, after: 40 }
+})));
+children.push(pgBreak());
+
+// ════════════════════════════════════════════════════════════
+//  SECTION 1 — PHYSICS
+// ════════════════════════════════════════════════════════════
+children.push(h1("SECTION 1 — PHYSICS", C.phys));
+children.push(p("Criterion C skill: i. Present collected and transformed data", { italic: true, color: "555555" }));
+children.push(sp());
+
+// ── What this section is about ──────────────────────────────
+children.push(h2("What this section is testing"));
+children.push(p("Every question in the Physics section is about ONE thing: can you record, calculate, and present data correctly? The examiner wants to see that you understand uncertainty — both where it comes from and how to use it mathematically. There are only four things you can ever be asked:"));
+[
+  "Identify and explain the instrument uncertainty for a measurement.",
+  "Calculate the random uncertainty from a set of repeat trials.",
+  "Calculate and correctly round the average.",
+  "Spot and correct a mistake in how data has been recorded.",
+].forEach((t,i) => children.push(num(t)));
+children.push(sp());
+
+// ── Part A: Instrument Uncertainty ──────────────────────────
+children.push(h2("Question Type A — Instrument Uncertainty"));
+children.push(h3("What is the question asking?"));
+children.push(p('Any question that says "state the instrument uncertainty for..." or "explain the uncertainty in the measurement" is asking you to identify the smallest increment on the measuring instrument.'));
+children.push(sp(80));
+
+children.push(h3("The rule — memorise this exactly"));
+children.push(box([
+  new Paragraph({ children: [
+    new TextRun({ text: "Instrument uncertainty = ", font: "Arial", size: 22 }),
+    new TextRun({ text: "plus or minus (+-) the smallest increment on the measuring instrument", font: "Arial", size: 22, bold: true }),
+  ], spacing: { before: 60, after: 60 } }),
+  new Paragraph({ children: [new TextRun({ text: "Ruler smallest increment = 0.1 cm  -->  uncertainty = +- 0.1 cm", font: "Courier New", size: 20 })], spacing: { before: 40, after: 40 } }),
+  new Paragraph({ children: [new TextRun({ text: "Timer smallest increment = 0.01 s  -->  uncertainty = +- 0.01 s", font: "Courier New", size: 20 })], spacing: { before: 40, after: 40 } }),
+]));
+children.push(sp());
+
+children.push(h3("Possible question wordings and how to answer each one"));
+
+children.push(h3("Q: 'State the instrument uncertainty for the length measurement.'"));
+children.push(eg_box([
+  "Model answer:",
+  "The instrument uncertainty for the length measurement is +- 0.1 cm, because 0.1 cm is the smallest increment on the ruler used in the experiment.",
+]));
+children.push(sp(80));
+
+children.push(h3("Q: 'Explain why the time measurement has an uncertainty of +- 0.01 s.'"));
+children.push(eg_box([
+  "Model answer:",
+  "The instrument uncertainty is +- 0.01 s because the timer records to the nearest 0.01 second, which is its smallest measurable unit. Any measurement made with this timer cannot be more precise than 0.01 s.",
+]));
+children.push(sp(80));
+
+children.push(h3("Q: 'What does the uncertainty of +- 0.1 cm tell us about the ruler?'"));
+children.push(eg_box([
+  "Model answer:",
+  "It tells us that the ruler can only measure to the nearest 0.1 cm. Any length reading could be up to 0.1 cm more or less than the stated value.",
+]));
+children.push(sp(80));
+
+children.push(h3("Q: 'What does the uncertainty tell us about how data should be recorded in the table?'"));
+children.push(eg_box([
+  "Model answer:",
+  "The uncertainty tells us the place value to which all data must be recorded. Because the timer uncertainty is +- 0.01 s, every time value in the table must be written to two decimal places — for example 4.50 s, not 4.5 s. This ensures the precision of the measurement is clearly communicated.",
+]));
+children.push(sp());
+children.push(warn_box([
+  "COMMON MISTAKE: Students write '0.1' instead of '+- 0.1 cm'. Always include the +- sign. Uncertainty is a range, not a single value.",
+]));
+children.push(sp());
+
+// ── Part B: Random Uncertainty ──────────────────────────────
+children.push(h2("Question Type B — Random Uncertainty Calculation"));
+children.push(h3("What is the question asking?"));
+children.push(p("This question gives you 5 trial values for one condition and asks you to calculate the random uncertainty. The random uncertainty comes from the measuring METHOD — even if you do everything right, repeated measurements will vary slightly."));
+children.push(sp(80));
+
+children.push(h3("The formula — use this every single time"));
+children.push(formulaTable([
+  ["Uncertainty = (MAX - MIN) / 2", "Subtract the smallest trial value from the largest, then divide by 2"],
+  ["Round to 1 significant figure", "The uncertainty is always expressed to 1 sig fig"],
+  ["Example: (2.22 - 1.98) / 2", "= 0.12 / 2 = 0.06 -- but this rounds to 0.06 (already 1 sig fig)"],
+  ["Another: (2.22 - 1.98) / 2", "= 0.12 / 2 = 0.06 -- if result were 0.12, round to 0.1"],
+]));
+children.push(sp());
+
+children.push(h3("Step-by-step method (do this every time)"));
+[
+  "Write out all 5 trial values clearly.",
+  "Identify the MAX (largest value) and the MIN (smallest value).",
+  "Calculate: MAX minus MIN.",
+  "Divide the result by 2.",
+  "Round to 1 significant figure.",
+  "Write the answer with units and the +- sign.",
+].forEach(t => children.push(num(t)));
+children.push(sp());
+
+children.push(h3("Worked example using the data from your material"));
+children.push(eg_box([
+  "Data for 5.0 cm: 2.01, 2.22, 1.98, 2.05, 2.01 s",
+  "",
+  "Step 1 -- MAX = 2.22 s    MIN = 1.98 s",
+  "Step 2 -- MAX - MIN = 2.22 - 1.98 = 0.24 s",
+  "Step 3 -- 0.24 / 2 = 0.12 s",
+  "Step 4 -- Round to 1 sig fig: 0.12 --> 0.1 s",
+  "",
+  "Random uncertainty = +- 0.1 s",
+]));
+children.push(sp(80));
+
+children.push(h3("Q: 'Why do we divide by 2?'"));
+children.push(eg_box([
+  "Model answer:",
+  "We divide by 2 because the uncertainty represents the range on either side of the average — it is the +- value. The full spread (MAX - MIN) covers both above and below the average, so we take half of it to find how far the true value could be from any single measurement.",
+]));
+children.push(sp(80));
+
+children.push(h3("Q: 'Why do we round the uncertainty to 1 significant figure?'"));
+children.push(eg_box([
+  "Model answer:",
+  "The uncertainty is itself an estimate — it tells us roughly how large the error is. It would be misleading to quote it to many decimal places because that would imply a precision we don't actually have. One significant figure is the appropriate level of precision for an uncertainty value.",
+]));
+children.push(sp(80));
+
+children.push(h3("Q: 'What does the random uncertainty tell us about the experiment?'"));
+children.push(eg_box([
+  "Model answer:",
+  "The random uncertainty tells us how much variation there was in repeated measurements under the same conditions. A larger random uncertainty means the results were less repeatable and that the measuring method introduced more error. A smaller uncertainty indicates more consistent, reliable measurements.",
+]));
+children.push(sp());
+children.push(warn_box([
+  "COMMON MISTAKES:",
+  "-- Forgetting to divide by 2 (getting 0.24 instead of 0.12, then 0.1)",
+  "-- Not rounding to 1 significant figure",
+  "-- Omitting the +- sign and units in the final answer",
+]));
+children.push(sp());
+
+// ── Part C: Average ─────────────────────────────────────────
+children.push(h2("Question Type C — Calculating and Rounding the Average"));
+children.push(h3("The two-step rule"));
+children.push(box([
+  new Paragraph({ children: [
+    new TextRun({ text: "Step 1: ", font: "Arial", size: 22, bold: true }),
+    new TextRun({ text: "Add all trial values and divide by the number of trials.", font: "Arial", size: 22 }),
+  ], spacing: { before: 60, after: 60 } }),
+  new Paragraph({ children: [
+    new TextRun({ text: "Step 2: ", font: "Arial", size: 22, bold: true }),
+    new TextRun({ text: "Round the average to the SAME place value as the uncertainty.", font: "Arial", size: 22 }),
+  ], spacing: { before: 60, after: 60 } }),
+]));
+children.push(sp());
+
+children.push(h3("Worked example"));
+children.push(eg_box([
+  "Data: 2.01 + 2.22 + 1.98 + 2.05 + 2.01 = 10.27",
+  "10.27 / 5 = 2.054 s  (unrounded average)",
+  "",
+  "Uncertainty = +- 0.1 s  (place value = tenths)",
+  "Round 2.054 to the tenths --> 2.1 s",
+  "",
+  "Final answer: 2.1 +- 0.1 s",
+]));
+children.push(sp());
+
+children.push(h3("Q: 'Why must the average be rounded to the same place value as the uncertainty?'"));
+children.push(eg_box([
+  "Model answer:",
+  "The uncertainty tells us the limit of precision for our measurements. If the uncertainty is +- 0.1 s, then we cannot know the average to a more precise level than the nearest 0.1 s. Reporting an average of 2.054 s while having an uncertainty of 0.1 s would imply a false precision -- the last two decimal places are meaningless given the size of the uncertainty.",
+]));
+children.push(sp());
+
+children.push(h3("Q: 'A student calculates an average of 3.047 s and a random uncertainty of 0.06 s. What should they report?'"));
+children.push(eg_box([
+  "Step 1: Uncertainty = 0.06 s -- place value = hundredths",
+  "Step 2: Round 3.047 to the hundredths --> 3.05 s",
+  "Final answer: 3.05 +- 0.06 s",
+  "",
+  "NOTE: 0.06 rounds to 1 sig fig as 0.06 (it already is 1 sig fig -- the leading zero doesn't count).",
+]));
+children.push(sp());
+
+// ── Part D: Recording mistakes ───────────────────────────────
+children.push(h2("Question Type D — Identifying Mistakes in Data Recording"));
+children.push(h3("The golden rule of data recording"));
+children.push(box([
+  "Every value in the table must be written to the SAME number of decimal places as the instrument uncertainty.",
+  "If uncertainty = +- 0.01 s  -->  write 4.50 s  NOT 4.5 s",
+  "If uncertainty = +- 0.1 cm  -->  write 5.0 cm  NOT 5 cm",
+]));
+children.push(sp());
+
+children.push(h3("Q: 'A student records 4.5 s for a trial where the timer uncertainty is +- 0.01 s. What is wrong and how should it be written?'"));
+children.push(eg_box([
+  "Model answer:",
+  "The mistake is that 4.5 s is written to only one decimal place, but the timer records to the nearest 0.01 s, so all data should be written to two decimal places. The correct recording is 4.50 s. Writing 4.5 s instead of 4.50 s suggests the measurement is only precise to the nearest 0.1 s, which misrepresents the precision of the instrument.",
+]));
+children.push(sp());
+
+children.push(h3("Q: 'Rewrite the column header correctly and explain each element.'"));
+children.push(eg_box([
+  "Incorrect: 'Time'",
+  "Correct:   'Time for ball to drop  +- 0.01 / s'",
+  "",
+  "Explanation:",
+  "-- 'Time for ball to drop' = the physical quantity (what is being measured)",
+  "-- '+- 0.01' = the measurement uncertainty (where it comes from = smallest unit on the timer)",
+  "-- '/ s' = the unit of measurement (seconds)",
+  "All three elements must be present in every column header.",
+]));
+children.push(sp());
+
+children.push(pgBreak());
+
+// ════════════════════════════════════════════════════════════
+//  SECTION 2 — CHEMISTRY
+// ════════════════════════════════════════════════════════════
+children.push(h1("SECTION 2 — CHEMISTRY", C.chem));
+children.push(p("Criterion C skill: ii. Interpret data and explain results using scientific reasoning", { italic: true, color: "555555" }));
+children.push(sp());
+
+children.push(h2("What this section is testing"));
+children.push(p("Chemistry Criterion C is about titration. You will be given raw titration data and asked to process it, interpret what it means, and evaluate the quality of the experiment. There are five types of question:"));
+[
+  "Calculate the titre (titrated volume) for each trial.",
+  "Identify concordant trials and calculate the average titre.",
+  "Calculate the concentration of an unknown solution.",
+  "Calculate percent error and comment on accuracy.",
+  "Evaluate precision, identify errors, and suggest improvements.",
+].forEach(t => children.push(num(t)));
+children.push(sp());
+
+children.push(h2("Question Type A — Calculating the Titre"));
+children.push(h3("What is the titre?"));
+children.push(p("The titre is the volume of solution added from the burette during one titration. It is simply the end point reading minus the start point reading."));
+children.push(sp(80));
+children.push(formulaTable([
+  ["Titre = End point - Start point", "Subtract the initial burette reading from the final burette reading"],
+  ["Example: 27.35 - 0.00 = 27.35 cm3", "Always include the unit cm3 (or mL)"],
+]));
+children.push(sp());
+
+children.push(h3("Q: 'Calculate the titre for each trial.'"));
+children.push(eg_box([
+  "Trial 1 (rough): 28.60 - 0.00 = 28.60 cm3",
+  "Trial 2: 27.35 - 0.00 = 27.35 cm3",
+  "Trial 3: 27.40 - 0.00 = 27.40 cm3",
+  "Trial 4: 28.85 - 1.50 = 27.35 cm3",
+]));
+children.push(sp());
+
+children.push(h2("Question Type B — Concordant Trials and Average Titre"));
+children.push(h3("What does concordant mean?"));
+children.push(box([
+  "Concordant trials are repeat titres that are close enough together to be considered reliable.",
+  "The standard rule: concordant titres differ by no more than 0.10 cm3 from each other.",
+  "The rough trial is ALWAYS excluded -- it is used only to get a rough idea of the endpoint.",
+]));
+children.push(sp());
+
+children.push(h3("Q: 'Identify which trials are concordant and explain why trial 1 is discarded.'"));
+children.push(eg_box([
+  "Model answer:",
+  "Trials 2, 3, and 4 are concordant because their titres (27.35, 27.40, 27.35 cm3) all lie within 0.10 cm3 of each other.",
+  "",
+  "Trial 1 is discarded because it is the rough trial. Its purpose was only to find the approximate endpoint so that the subsequent trials could be performed more carefully and slowly near the endpoint. The rough trial is not expected to be accurate and is never included in the average.",
+]));
+children.push(sp());
+
+children.push(h3("Q: 'Calculate the average titre from the concordant trials.'"));
+children.push(eg_box([
+  "Concordant titres: 27.35, 27.40, 27.35 cm3",
+  "Average = (27.35 + 27.40 + 27.35) / 3",
+  "        = 82.10 / 3",
+  "        = 27.37 cm3",
+  "",
+  "NOTE: Keep the average to the same decimal places as the raw data (2 d.p. for burette readings).",
+]));
+children.push(sp());
+
+children.push(h2("Question Type C — Calculating the Concentration"));
+children.push(h3("The calculation chain — do these steps in order every time"));
+children.push(formulaTable([
+  ["Step 1: moles NaOH = C x V/1000", "Concentration (mol/dm3) x volume in cm3 divided by 1000"],
+  ["Step 2: moles acid = moles NaOH / ratio", "Use the molar ratio from the balanced equation"],
+  ["Step 3: concentration = moles / V(dm3)", "Convert cm3 to dm3 by dividing by 1000"],
+]));
+children.push(sp());
+
+children.push(h3("Full worked example — H2SO4 with NaOH (1:2 ratio)"));
+children.push(eg_box([
+  "Average titre of NaOH = 27.37 cm3",
+  "Concentration NaOH = 0.100 mol/dm3",
+  "Volume H2SO4 used = 25.00 cm3",
+  "Equation: H2SO4 + 2NaOH --> Na2SO4 + 2H2O",
+  "Molar ratio H2SO4 : NaOH = 1 : 2",
+  "",
+  "Step 1 -- moles NaOH = 0.100 x (27.37 / 1000) = 0.002737 mol",
+  "Step 2 -- moles H2SO4 = 0.002737 / 2 = 0.001369 mol   (divide by 2 because ratio is 1:2)",
+  "Step 3 -- concentration H2SO4 = 0.001369 / (25.00/1000) = 0.001369 / 0.02500 = 0.0547 mol/dm3",
+]));
+children.push(sp());
+
+children.push(h3("Full worked example — HCl with NaOH (1:1 ratio)"));
+children.push(eg_box([
+  "Average titre of NaOH = 24.85 cm3",
+  "Concentration NaOH = 0.100 mol/dm3",
+  "Volume HCl used = 25.00 cm3",
+  "Equation: HCl + NaOH --> NaCl + H2O",
+  "Molar ratio HCl : NaOH = 1 : 1",
+  "",
+  "Step 1 -- moles NaOH = 0.100 x (24.85 / 1000) = 0.002485 mol",
+  "Step 2 -- moles HCl = 0.002485 / 1 = 0.002485 mol   (ratio is 1:1, so no change)",
+  "Step 3 -- concentration HCl = 0.002485 / 0.02500 = 0.0994 mol/dm3",
+]));
+children.push(sp());
+
+children.push(h2("Question Type D — Percent Error and Accuracy"));
+children.push(formulaTable([
+  ["% error = |exp - accepted| / accepted x 100", "Use absolute value (ignore minus signs)"],
+  ["Example: |0.0994 - 0.100| / 0.100 x 100", "= 0.0006 / 0.100 x 100 = 0.6%"],
+]));
+children.push(sp());
+
+children.push(h3("Q: 'Calculate the percent error and comment on accuracy.'"));
+children.push(eg_box([
+  "% error = |0.0994 - 0.100| / 0.100 x 100 = 0.6%",
+  "",
+  "Comment on accuracy (model answer):",
+  "The experiment showed good accuracy. The calculated concentration (0.0994 mol/dm3) is very close to the accepted value (0.100 mol/dm3), giving a percent error of only 0.6%. This low percent error indicates that the experimental method successfully determined the concentration of the acid and that any systematic errors present had only a small effect on the result.",
+]));
+children.push(sp());
+
+children.push(h3("Q: 'What does a low percent error tell us?'"));
+children.push(eg_box([
+  "Model answer:",
+  "A low percent error tells us that the experimental value is close to the true (accepted) value, which means the results are accurate. It suggests that systematic errors -- errors that consistently shift the result in one direction -- were small or absent.",
+]));
+children.push(sp());
+
+children.push(h2("Question Type E — Conclusion Writing"));
+children.push(h3("The structure of a Criterion C chemistry conclusion"));
+children.push(box([
+  "1. State the aim of the experiment.",
+  "2. Summarise the method in one sentence.",
+  "3. State the final calculated value.",
+  "4. State the percent error.",
+  "5. Comment on whether the result is accurate (low % error = accurate).",
+  "6. Explain the chemistry at the endpoint (what neutralisation means).",
+]));
+children.push(sp());
+
+children.push(h3("Full model conclusion"));
+children.push(eg_box([
+  "The aim of this experiment was to determine the concentration of sulfuric acid using a titration with a standard sodium hydroxide solution.",
+  "",
+  "Three concordant titres were obtained with an average titre of 27.37 cm3 of NaOH. Using the balanced equation H2SO4 + 2NaOH --> Na2SO4 + 2H2O, the molar ratio between H2SO4 and NaOH is 1:2. The average volume of NaOH allowed the number of moles of NaOH to be calculated, which was then used to determine the concentration of H2SO4.",
+  "",
+  "The calculated concentration of H2SO4 was 0.0547 mol/dm3. Compared to the accepted value of 0.0500 mol/dm3, this gives a percent error of approximately 9.4%.",
+  "",
+  "At the endpoint, the indicator changed from colourless to faint pink, showing that neutralisation had occurred and that chemically equivalent amounts of acid and base had reacted.",
+]));
+children.push(sp());
+
+children.push(h2("Question Type F — Evaluation: Precision, Errors, Improvements"));
+children.push(h3("Q: 'Evaluate the precision of the results.'"));
+children.push(eg_box([
+  "Model answer (using concordant titres of 27.35, 27.40, 27.35 cm3):",
+  "",
+  "The experiment showed high precision because the concordant titre values were very close together, ranging from 27.35 to 27.40 cm3. The range is only 0.05 cm3, indicating good repeatability. This suggests that the titration technique was consistent across trials and that random errors were small.",
+]));
+children.push(sp());
+
+children.push(h3("Q: 'Identify a systematic error and explain its effect.'"));
+children.push(eg_box([
+  "Systematic error 1: Judging the endpoint too late (too much NaOH added)",
+  "Effect: The titre will be consistently too large, so the calculated moles of NaOH will be too high, leading to a calculated acid concentration that is too high.",
+  "",
+  "Systematic error 2: Residual water in the burette before adding NaOH",
+  "Effect: The NaOH solution is diluted, so more volume is needed to reach the endpoint. The titre is consistently larger than it should be, giving a concentration that is too high.",
+  "",
+  "Systematic error 3: Residual water in the pipette before adding the acid",
+  "Effect: The acid is diluted, so fewer moles of acid are present. Less NaOH is needed, giving a titre that is too small and a concentration that is too low.",
+]));
+children.push(sp());
+
+children.push(h3("Q: 'Suggest improvements to the method.'"));
+children.push(eg_box([
+  "Improvement 1: Add the titrant dropwise near the endpoint",
+  "This reduces the risk of overshooting, which causes a systematic error of adding too much NaOH.",
+  "",
+  "Improvement 2: Use a white tile beneath the conical flask",
+  "This improves detection of the colour change at the endpoint, reducing the chance of misjudging it.",
+  "",
+  "Improvement 3: Rinse the burette with the NaOH solution before filling it",
+  "This prevents dilution of the NaOH by residual water, removing a source of systematic error.",
+  "",
+  "Improvement 4: Rinse the pipette with the acid solution before use",
+  "Same reason -- prevents dilution of the analyte.",
+]));
+children.push(sp());
+
+children.push(h3("CRITICAL language note: supported, not proven"));
+children.push(warn_box([
+  "NEVER write: 'The experiment proved the concentration is X mol/dm3'",
+  "ALWAYS write: 'The results support a concentration of X mol/dm3' OR 'The calculated concentration was X mol/dm3, which is close to the accepted value, giving a percent error of Y%'",
+  "",
+  "Scientists never prove things -- they support or do not support a conclusion with evidence.",
+]));
+children.push(sp());
+
+children.push(pgBreak());
+
+// ════════════════════════════════════════════════════════════
+//  SECTION 3 — ENVIRONMENTAL SCIENCE
+// ════════════════════════════════════════════════════════════
+children.push(h1("SECTION 3 — ENVIRONMENTAL SCIENCE", C.env));
+children.push(p("Criterion C skill: iii. Evaluate the validity of a hypothesis based on the outcome of the investigation", { italic: true, color: "555555" }));
+children.push(sp());
+
+children.push(h2("What this section is testing"));
+children.push(p("Environmental Science Criterion C is about evaluating a hypothesis. You will be given data from an ecological investigation and asked to judge whether the results support the hypothesis, explain the trend using ecological concepts, and recognise the limitations of the investigation. There are four types of question:"));
+[
+  "Describe the trend in the data using specific values.",
+  "Evaluate whether the hypothesis is supported.",
+  "Explain the trend using ecological reasoning.",
+  "Recognise that correlation is not causation, and identify limitations.",
+].forEach(t => children.push(num(t)));
+children.push(sp());
+
+children.push(h2("Question Type A — Describing the Trend"));
+children.push(h3("The formula for a trend description"));
+children.push(box([
+  "As [independent variable] increases/decreases,",
+  "[dependent variable] increases/decreases.",
+  "Use specific numbers from the table.",
+  "Note any anomalies (data points that break the pattern).",
+]));
+children.push(sp());
+
+children.push(h3("Q: 'Describe the trend shown in the data.' (vegetation cover vs insects)"));
+children.push(eg_box([
+  "Model answer:",
+  "The data shows a positive relationship between vegetation cover and insect abundance. As vegetation cover increased from 20% to 80%, the number of insects increased from 15 to 67. The increase appears consistent across all four sites, with no anomalies in the data.",
+]));
+children.push(sp());
+
+children.push(h3("Q: 'What trend does the data show?' (if there is an anomaly)"));
+children.push(eg_box([
+  "Imagine Site E (70% cover) had fewer insects than Site D (80% cover):",
+  "",
+  "Model answer:",
+  "The data generally shows a positive relationship between vegetation cover and insect abundance: as vegetation cover increased from 20% to 60%, insect abundance increased from 15 to 45. However, Site E (70% cover) showed a lower insect count than expected, representing an anomaly in the general trend. This suggests that at very high moisture levels, other limiting factors may reduce insect abundance.",
+]));
+children.push(sp());
+
+children.push(h2("Question Type B — Evaluating the Hypothesis"));
+children.push(h3("The three possible outcomes — know all three"));
+children.push(box([
+  "SUPPORTED: The data matches the prediction in the hypothesis.",
+  "PARTIALLY SUPPORTED: The data partly matches -- the trend goes in the right direction but not consistently, or only for some conditions.",
+  "NOT SUPPORTED: The data does not match the prediction -- the trend goes in the opposite direction.",
+  "",
+  "NEVER write 'proven' or 'disproven'. ALWAYS write 'supported', 'partially supported', or 'not supported'.",
+]));
+children.push(sp());
+
+children.push(h3("Q: 'Evaluate whether the hypothesis is supported.'"));
+children.push(eg_box([
+  "Hypothesis: 'If vegetation cover increases, insect abundance will increase...'",
+  "",
+  "Model answer (full marks response):",
+  "",
+  "The results support the hypothesis. The data shows a consistent positive relationship between vegetation cover and insect abundance: as vegetation cover increased from 20% to 80%, insect abundance increased from 15 to 67 individuals.",
+  "",
+  "This can be explained using principles of population ecology. Vegetation provides food resources for herbivorous insects and creates habitats that offer protection from predators and harsh environmental conditions. Greater plant diversity increases the number of ecological niches available, supporting a wider variety of insect species and allowing the carrying capacity of the environment to increase.",
+  "",
+  "However, although the results support the hypothesis, the relationship may not be caused by vegetation cover alone. Other environmental factors such as temperature, soil moisture, and predator abundance could also influence insect populations and were not controlled in this investigation. Therefore, the data demonstrates a correlation between vegetation cover and insect abundance, but does not prove a direct cause-and-effect relationship.",
+  "",
+  "Overall, the hypothesis is supported because the observed trend matches the predicted outcome and can be explained using ecological principles.",
+]));
+children.push(sp());
+
+children.push(h3("Q: 'What ecological concepts explain the trend?'"));
+children.push(eg_box([
+  "Use these concepts -- they earn marks:",
+  "",
+  "-- HABITAT: Vegetation provides physical shelter and nesting sites for insects.",
+  "-- FOOD RESOURCES: Plants are food for herbivorous insects (primary consumers).",
+  "-- CARRYING CAPACITY: As habitat quality improves, the environment can support a larger insect population.",
+  "-- ECOLOGICAL NICHES: Greater plant diversity = more niches = more insect species can coexist.",
+  "-- BIODIVERSITY: Areas with more vegetation tend to have greater biodiversity.",
+  "-- DENSITY-DEPENDENT FACTORS: In richer habitats, competition and predation are less limiting.",
+]));
+children.push(sp());
+
+children.push(h2("Question Type C — Correlation vs Causation"));
+children.push(h3("Q: 'Why does this investigation not prove that vegetation cover CAUSES the change in insect abundance?'"));
+children.push(eg_box([
+  "Model answer:",
+  "This investigation demonstrates a correlation between vegetation cover and insect abundance -- as one variable increases, so does the other. However, correlation does not prove causation. Other uncontrolled variables, such as temperature, soil moisture, proximity to water, and predator abundance, also differed between the sites and could have influenced insect populations. Without controlling these variables, it is not possible to conclude that vegetation cover alone caused the observed changes in insect abundance.",
+]));
+children.push(sp());
+
+children.push(h3("Q: 'A student says the results prove the hypothesis. Why is this incorrect?'"));
+children.push(eg_box([
+  "Model answer:",
+  "The student's statement is scientifically inaccurate for two reasons. First, in science, a hypothesis is never 'proven' -- it is supported or not supported by evidence. The word 'proven' implies absolute certainty, which is not possible in empirical science. Second, the investigation only shows a correlation; because other variables were not controlled, we cannot be certain that vegetation cover was the cause of the observed differences in insect abundance.",
+]));
+children.push(sp());
+
+children.push(h2("Question Type D — Limitations and Improvements"));
+children.push(h3("Q: 'Identify TWO limitations of this investigation.'"));
+children.push(eg_box([
+  "Limitation 1: Only four sites were sampled.",
+  "Effect: A small sample size means the trend may not be representative of the wider area. More sites would increase confidence in the relationship.",
+  "",
+  "Limitation 2: Environmental variables other than vegetation cover (e.g. temperature, soil moisture) were not controlled.",
+  "Effect: Differences in insect abundance between sites could be due to these other variables rather than vegetation cover, making it impossible to establish causation.",
+  "",
+  "Limitation 3: Insect counts may vary with weather conditions or time of day.",
+  "Effect: If different sites were sampled at different times or under different weather conditions, this could have introduced random error into the counts.",
+]));
+children.push(sp());
+
+children.push(h3("Q: 'Suggest TWO improvements to make the results more reliable or valid.'"));
+children.push(eg_box([
+  "Improvement 1: Increase the number of sampling sites.",
+  "This gives a larger sample, making the trend more statistically reliable.",
+  "",
+  "Improvement 2: Repeat sampling on multiple days at each site and calculate averages.",
+  "This reduces the impact of random variation due to weather or time of day.",
+  "",
+  "Improvement 3: Measure and control additional abiotic factors (temperature, humidity, soil moisture) at each site.",
+  "This would help isolate vegetation cover as the independent variable and allow a causal relationship to be investigated.",
+]));
+children.push(sp());
+
+children.push(pgBreak());
+
+// ════════════════════════════════════════════════════════════
+//  SECTION 4 — BIOLOGY
+// ════════════════════════════════════════════════════════════
+children.push(h1("SECTION 4 — BIOLOGY", C.bio));
+children.push(p("Criterion C skills: iv. Evaluate the validity of the method  |  v. Suggest improvements and extensions", { italic: true, color: "555555" }));
+children.push(sp());
+
+children.push(h2("What this section is testing"));
+children.push(p("Biology Criterion C is about evaluating the catalase/pH lab. You will be asked to identify the variables, explain the results using biology, evaluate the method, suggest improvements, and suggest an extension. There are five types of question:"));
+[
+  "Identify and explain variables (independent, dependent, controlled).",
+  "Explain the results using enzyme biology.",
+  "Identify limitations of the method and explain how they affect validity.",
+  "Suggest improvements with reasoning.",
+  "Suggest a meaningful extension with a prediction and biological explanation.",
+].forEach(t => children.push(num(t)));
+children.push(sp());
+
+children.push(h2("Question Type A — Variables"));
+children.push(formulaTable([
+  ["Independent variable", "The variable you deliberately change. In this experiment: the pH of the potato puree (pH 4.0 to 11.0)."],
+  ["Dependent variable", "The variable you measure in response. In this experiment: the volume of oxygen gas produced in 30 seconds."],
+  ["Controlled variable", "Variables kept constant to ensure a fair test. Examples: volume of potato puree (2.5 cm3), volume of H2O2 (10 cm3), reaction time (30 s), concentration of H2O2 (3%)."],
+]));
+children.push(sp());
+
+children.push(h3("Q: 'Why is measuring oxygen volume a valid way to measure the rate of catalase activity?'"));
+children.push(eg_box([
+  "Model answer:",
+  "Catalase catalyses the decomposition of hydrogen peroxide into water and oxygen: 2H2O2 --> 2H2O + O2. The volume of oxygen gas produced is directly proportional to the rate of this reaction. When catalase activity is high, more hydrogen peroxide is broken down per unit time, producing more oxygen. Measuring oxygen volume therefore provides a quantitative, measurable indicator of how fast the catalase reaction is proceeding.",
+]));
+children.push(sp());
+
+children.push(h2("Question Type B — Explaining the Results using Enzyme Biology"));
+children.push(h3("The explanation structure (use this every time)"));
+children.push(box([
+  "1. State what the optimum pH is and what it means structurally.",
+  "2. Explain why activity decreases at low pH (excess H+ ions).",
+  "3. Explain why activity decreases at high pH (excess OH- ions).",
+  "4. Use the terms: active site, enzyme-substrate complex, hydrogen bonds, ionic bonds, denaturation.",
+]));
+children.push(sp());
+
+children.push(h3("Q: 'Explain why catalase activity is highest at pH 7 and decreases at extreme pH values.'"));
+children.push(eg_box([
+  "Model answer:",
+  "",
+  "Catalase is an enzyme that catalyses the breakdown of hydrogen peroxide into water and oxygen. Enzymes have a specific three-dimensional structure that determines the shape of their active site. At the optimum pH (approximately pH 7), the active site of catalase maintains the correct shape, allowing hydrogen peroxide (the substrate) to bind efficiently and form enzyme-substrate complexes. This results in maximum reaction rate and therefore maximum oxygen production.",
+  "",
+  "At very low pH values, there is an excess of H+ ions in solution. These hydrogen ions interact with the amino acids in the enzyme, disrupting the hydrogen bonds and ionic bonds that maintain the enzyme's three-dimensional structure. This causes the shape of the active site to change, so substrate molecules can no longer fit and bind effectively. As a result, fewer enzyme-substrate complexes form and the reaction rate decreases.",
+  "",
+  "At very high pH values, an excess of OH- ions causes a similar disruption to the ionic and hydrogen bonds maintaining the enzyme's structure. In both extreme cases, if the pH is far enough from the optimum, the enzyme may become denatured -- it loses its specific shape permanently and can no longer function as a catalyst.",
+]));
+children.push(sp());
+
+children.push(h3("Q: 'What is denaturation?'"));
+children.push(eg_box([
+  "Model answer:",
+  "Denaturation is the irreversible change in the three-dimensional structure of a protein (enzyme) caused by disruption of the bonds that maintain its shape. When an enzyme is denatured, its active site changes shape permanently. The substrate can no longer bind, so the enzyme can no longer catalyse its reaction. Denaturation caused by pH occurs because H+ or OH- ions break the hydrogen and ionic bonds within the enzyme structure.",
+]));
+children.push(sp());
+
+children.push(h2("Question Type C — Limitations of the Method"));
+children.push(h3("The four main limitations of the catalase experiment — know all four"));
+[
+  ["Uneven enzyme concentration in potato puree",
+   "Even after blending, the puree may not have a perfectly uniform catalase concentration. Some test tubes may receive more enzyme than others, causing variation in oxygen production that is due to enzyme concentration rather than pH. This reduces the validity of the comparison between pH values."],
+  ["No buffer solutions used to maintain pH",
+   "HCl and NaOH were used to adjust pH, but no buffer solutions were used. As the reaction proceeded, the products and reactants may have shifted the pH slightly, meaning the enzyme was not exposed to a constant pH throughout the 30-second reaction. This reduces the validity of the stated independent variable."],
+  ["Temperature not actively controlled",
+   "Temperature was measured but not controlled using a water bath. Since enzyme activity is strongly temperature-dependent (higher temperature = faster reaction, up to the point of denaturation), differences in temperature between trials could have affected reaction rates independently of pH. This reduces the validity of any comparison between pH conditions."],
+  ["Gas may have escaped during assembly of apparatus",
+   "When the stopper and glass tube were inserted after adding hydrogen peroxide, some oxygen gas produced in the first moments of the reaction may have escaped before reaching the burette. This would cause the measured gas volume to be consistently lower than the true value, introducing a systematic error."],
+].forEach(([title, exp]) => {
+  children.push(h3("Limitation: "+title));
+  children.push(eg_box([exp]));
+  children.push(sp(80));
+});
+
+children.push(h3("Q: 'Identify THREE limitations. For each, explain how it affects validity or reliability.'"));
+children.push(eg_box([
+  "Model answer format -- use this structure:",
+  "",
+  "Limitation 1: The potato puree may not have had a uniform catalase concentration throughout.",
+  "Effect on validity: Some test tubes may have received more or less enzyme, meaning differences in oxygen production between pH values could be partly due to enzyme concentration rather than pH alone. This makes it harder to conclude that pH was the only variable affecting the reaction rate.",
+  "",
+  "Limitation 2: No buffer solutions were used to maintain a constant pH.",
+  "Effect on validity: As the reaction proceeded, the pH may have shifted slightly, so the enzyme was not exposed to the intended pH for the full 30 seconds. This means the independent variable was not perfectly controlled.",
+  "",
+  "Limitation 3: Temperature was measured but not controlled.",
+  "Effect on validity: If temperature varied between trials, this could have affected the rate of enzyme-substrate collisions independently of pH, reducing the validity of comparing results across different pH values.",
+]));
+children.push(sp());
+
+children.push(h2("Question Type D — Improvements to the Method"));
+children.push(h3("The five key improvements — for every limitation there is a matching improvement"));
+children.push(eg_box([
+  "Limitation: uneven enzyme concentration",
+  "Improvement: Thoroughly stir or vortex the potato puree immediately before each trial to distribute the enzyme more evenly. Alternatively, use a fixed mass of potato tissue or a commercially purified catalase solution with a known concentration.",
+  "",
+  "Limitation: pH not maintained during reaction",
+  "Improvement: Use buffer solutions of known pH instead of adjusting with HCl and NaOH. Buffer solutions resist changes in pH during the reaction, ensuring the enzyme is exposed to a constant, accurate pH throughout.",
+  "",
+  "Limitation: temperature not controlled",
+  "Improvement: Place all test tubes in a temperature-controlled water bath set to a constant temperature (e.g. 25 degrees C) before and during the experiment. This eliminates temperature as a confounding variable.",
+  "",
+  "Limitation: gas escaping during assembly",
+  "Improvement: Check all connections for leaks before beginning each trial. Use a gas syringe instead of water displacement -- a gas syringe directly collects gas and reduces the chance of loss during setup.",
+  "",
+  "Limitation: only 5 trials per pH",
+  "Improvement: Increase the number of trials to at least 8-10 per pH value. A larger sample size increases confidence in the average and makes it easier to identify and exclude anomalous results.",
+]));
+children.push(sp());
+
+children.push(h2("Question Type E — Extensions to the Investigation"));
+children.push(h3("What makes a good extension?"));
+children.push(box([
+  "A good extension changes ONE new independent variable while keeping everything else the same.",
+  "It must be related to enzyme activity (not a completely different topic).",
+  "You must predict the result AND explain it biologically.",
+]));
+children.push(sp());
+
+children.push(h3("Q: 'Suggest a meaningful extension to this investigation.'"));
+children.push(eg_box([
+  "Model answer:",
+  "",
+  "A useful extension would be to investigate the effect of temperature on catalase activity while keeping pH constant at the optimum value identified in this experiment (pH 7).",
+  "",
+  "Method: The experiment would be repeated at temperatures ranging from 10 degrees C to 60 degrees C, with all test tubes maintained in water baths at each target temperature. pH would be kept constant using buffer solutions at pH 7.",
+  "",
+  "Predicted result: Oxygen production will increase as temperature increases from 10 degrees C up to approximately 37-40 degrees C (the optimum temperature for catalase). Above this temperature, oxygen production will decrease sharply.",
+  "",
+  "Biological explanation: Increasing temperature increases the kinetic energy of both the enzyme and substrate molecules, leading to more frequent and more energetic collisions and more enzyme-substrate complexes forming per unit time. Above the optimum temperature, the excess thermal energy begins to disrupt the hydrogen and ionic bonds that maintain the enzyme's three-dimensional structure. The active site changes shape and the enzyme becomes denatured, so substrate molecules can no longer bind effectively and the reaction rate falls.",
+]));
+children.push(sp());
+
+children.push(h3("Other valid extension ideas"));
+[
+  "Effect of substrate concentration (H2O2 concentration) on catalase activity at optimum pH.",
+  "Comparison of catalase activity in different biological tissues (potato, liver, celery, apple) at the same pH.",
+  "Effect of enzyme inhibitors on catalase activity.",
+  "The interaction between temperature and pH -- whether the optimum pH changes at different temperatures.",
+].forEach(t => children.push(bullet(t)));
+children.push(sp());
+
+children.push(h2("MASTER VOCABULARY LIST — use these words in every Biology Criterion C answer"));
+[
+  ["Active site", "The specific region of an enzyme where the substrate binds. Its shape is complementary to the substrate."],
+  ["Enzyme-substrate complex", "The temporary structure formed when a substrate molecule binds to the active site of an enzyme."],
+  ["Denaturation", "The irreversible change in enzyme shape caused by extreme pH or temperature, making the active site non-functional."],
+  ["Optimum pH / temperature", "The pH or temperature at which enzyme activity is greatest."],
+  ["Hydrogen bonds", "Weak bonds that help maintain the three-dimensional shape of the enzyme. Disrupted by extreme pH."],
+  ["Validity", "Whether the experiment actually measures what it claims to measure (are there uncontrolled variables?)."],
+  ["Reliability", "Whether the results are consistent and repeatable (do repeated trials give similar values?)."],
+  ["Confounding variable", "An uncontrolled variable that could also affect the dependent variable, making it hard to isolate the effect of the independent variable."],
+].forEach(([term, def]) => {
+  children.push(kv(term, def));
+});
+
+children.push(sp());
+children.push(new Paragraph({
+  border: { bottom: { style: BorderStyle.SINGLE, size: 6, color: "AAAAAA", space: 1 } },
+  children: [new TextRun("")], spacing: { before: 0, after: 300 }
+}));
+children.push(new Paragraph({
+  children: [new TextRun({ text: "End of Criterion C Answer Guide", font: "Arial", size: 22, italics: true, color: "888888" })],
+  alignment: AlignmentType.CENTER, spacing: { before: 100, after: 100 }
+}));
+
+// ── BUILD ────────────────────────────────────────────────────
+const doc = new Document({
+  numbering,
+  styles,
+  sections: [{
+    properties: {
+      page: {
+        size: { width: 11906, height: 16838 },
+        margin: { top: 1440, right: 1440, bottom: 1440, left: 1440 }
+      }
     },
+    children,
+  }]
+});
 
-    # ── 5. Illusione vs Realt\u00e0 ──────────────────────────────────────────────
-    {
-        "num": 5,
-        "title": "Illusione contro Realt\u00e0",
-        "toc": "Illusione contro Realt\u00e0",
-        "subs": [
-            {
-                "h": "La doppia morte fittizia come metafora",
-                "b": (
-                    "Mattia finge la propria morte due volte nel corso del romanzo: la prima quando "
-                    "viene scambiato per morto nel canale, la seconda quando decide di tornare alla "
-                    "vita precedente abbandonando l\u2019identit\u00e0 di Adriano Meis. Queste morti "
-                    "fittizie sono potenti metafore della negazione di s\u00e9: ogni volta che Mattia "
-                    "\u2018muore\u2019, tenta di cancellare la responsabilit\u00e0 accumulata dalla "
-                    "vita precedente. Ma Pirandello dimostra che il passato non si cancella: ritorna "
-                    "sempre, come un\u2019ombra che il personaggio stesso evoca."
-                ),
-                "quotes": [
-                    ("Mi ero illuso di poter diventare un altro uomo, facendomi perdere di vista la "
-                     "mia realt\u00e0, se non addirittura negandola.",
-                     "Pirandello, Il fu Mattia Pascal"),
-                ],
-                "evc": (
-                    "Il motivo dell\u2019ombra che Pirandello usa \u2014 Mattia si definisce \u2018ombra "
-                    "di uomo\u2019 \u2014 rimanda direttamente alla concezione platonica dell\u2019illusione, "
-                    "ma acquista una valenza esistenzialista: l\u2019ombra non \u00e8 mancanza di "
-                    "sostanza metafisica, ma assenza di responsabilit\u00e0 autentica. Senza assumere "
-                    "la propria esistenza, si \u00e8 davvero fantasmi."
-                )
-            },
-            {
-                "h": "L'angoscia come momento di verit\u00e0",
-                "b": (
-                    "Il furto subito da Mattia durante la sua vita come Adriano Meis rappresenta il "
-                    "momento di rottura in cui l\u2019illusione crolla. Impossibilitato a denunciare "
-                    "il ladro senza rivelare la propria falsa identit\u00e0, Mattia si trova in uno "
-                    "stato di totale impotenza. \u00c8 in questo momento che Sartre collocherebbe "
-                    "l\u2019<i>angoisse</i>: la consapevolezza della propria responsabilit\u00e0 "
-                    "totale e del peso delle scelte compiute. La nebbia delle illusioni si dissolve "
-                    "e Mattia vede finalmente s\u00e9 stesso con chiarezza dolorosa."
-                ),
-                "quotes": [
-                    ("Un altro uomo, s\u00ec, ma a patto di non far nulla. E che uomo era, allora? "
-                     "Un\u2019ombra d\u2019uomo!",
-                     "Pirandello, Il fu Mattia Pascal"),
-                ],
-                "evc": (
-                    "L\u2019angoscia sartriana non \u00e8 una debolezza: \u00e8 il necessario punto "
-                    "di contatto con la realt\u00e0 della propria libert\u00e0. Pirandello costruisce "
-                    "questa scena con grande abilit\u00e0 drammatica: la parit\u00e0 tra il crimine "
-                    "subito e l\u2019impossibilit\u00e0 di reagire diventa il simbolo perfetto di una "
-                    "vita costruita sull\u2019inganno. Solo quando l\u2019inganno crolla, la vera "
-                    "esistenza pu\u00f2 ricominciare."
-                )
-            },
-        ]
-    },
-
-    # ── 6. Responsabilit\u00e0 e Crisi Esistenziale ────────────────────────────
-    {
-        "num": 6,
-        "title": "Responsabilit\u00e0 e Crisi Esistenziale",
-        "toc": "Responsabilit\u00e0 e Crisi Esistenziale",
-        "subs": [
-            {
-                "h": "Il riconoscimento della condanna alla libert\u00e0",
-                "b": (
-                    "Verso la fine del romanzo, Mattia raggiunge quella che Sartre chiamerebbe la fase "
-                    "finale del percorso esistenzialista: il riconoscimento della propria responsabilit\u00e0 "
-                    "e, con essa, della propria condanna alla libert\u00e0. Decide di fingere la propria "
-                    "morte per la seconda volta e di tornare al paese natale, affrontando le conseguenze "
-                    "delle proprie scelte. Trova la moglie risposata, la sua vecchia vita irrecuperabile. "
-                    "Non pu\u00f2 riprendere il passato, ma pu\u00f2 finalmente guardarlo in faccia."
-                ),
-                "quotes": [
-                    ("Quando un uomo \u00e8 nell\u2019angoscia, significa che \u00e8 consapevole della "
-                     "propria piena e profonda responsabilit\u00e0.",
-                     "Sartre, L\u2019esistenzialismo \u00e8 un umanismo (1946)"),
-                ],
-                "evc": (
-                    "Il finale del romanzo \u00e8 volutamente ambiguo. Mattia non raggiunge una libert\u00e0 "
-                    "trionfante: torna a una vita dimezzata, senza moglie, senza ruolo definito, "
-                    "visitando la propria tomba come uno spettatore della propria esistenza. Eppure, "
-                    "in questa accettazione senza illusioni, Pirandello suggerisce che forse \u00e8 "
-                    "proprio questo il massimo di autenticit\u00e0 raggiungibile: non la libert\u00e0 "
-                    "assoluta di Sartre, ma una libert\u00e0 consapevole dei propri limiti."
-                )
-            },
-            {
-                "h": "Un eroe esistenzialista sui generis",
-                "b": (
-                    "Mattia Pascal pu\u00f2 essere definito un eroe esistenzialista <i>sui generis</i>: "
-                    "segue le tappe classiche del percorso sartriano \u2014 malafede, angoscia, crisi, "
-                    "riconoscimento \u2014 ma non approda mai a una piena autenticit\u00e0. Rimane "
-                    "intrappolato tra due mondi, due identit\u00e0, due vite. Questa incompletezza "
-                    "non \u00e8 un fallimento narrativo di Pirandello: \u00e8 una scelta consapevole "
-                    "che riflette una visione della libert\u00e0 pi\u00f9 problematica e realistica "
-                    "di quella sartriana."
-                ),
-                "quotes": [
-                    ("La nostra libert\u00e0 \u00e8, in ultima analisi, sia una benedizione che una "
-                     "maledizione.",
-                     "Pacifici, Existentialism and Italian Literature (1955)"),
-                ],
-                "evc": (
-                    "L\u2019affermazione di Pacifici sintetizza bene la posizione di Pirandello: "
-                    "la libert\u00e0 non \u00e8 mai pura conquista. \u00c8 anche peso, solitudine, "
-                    "responsabilit\u00e0 insostenibile. Mattia Pascal incarna questa ambivalenza "
-                    "meglio di qualsiasi trattato filosofico: perch\u00e9 la vive, la fallisce, "
-                    "e infine la porta con s\u00e9 senza poterla risolvere. In questo risiede la "
-                    "sua grandezza letteraria e la sua profondit\u00e0 filosofica."
-                )
-            },
-        ]
-    },
-]
-
-# ════════════════════════════════════════════════════════════════════════════
-#  ASSEMBLE PDF
-# ════════════════════════════════════════════════════════════════════════════
-OUTPUT = "/mnt/user-data/outputs/Mattia_Pascal_Portfolio_IT.pdf"
-
-doc = SimpleDocTemplate(
-    OUTPUT, pagesize=A4,
-    leftMargin=2*cm, rightMargin=2*cm,
-    topMargin=1.8*cm, bottomMargin=2*cm,
-    onFirstPage=on_page, onLaterPages=on_page
-)
-
-story = []
-
-# ── COVER PAGE ───────────────────────────────────────────────────────────────
-cover_bg_data = [[""]]
-cover_bg = Table(cover_bg_data, colWidths=[W - 4*cm], rowHeights=[H - 6*cm])
-cover_bg.setStyle(TableStyle([
-    ("BACKGROUND", (0,0),(-1,-1), DEEP_NAVY),
-    ("TOPPADDING", (0,0),(-1,-1), 3*cm),
-]))
-
-cover_content = [
-    Spacer(1, 2.5*cm),
-    Paragraph("IL FU MATTIA PASCAL", T_TITLE),
-    Spacer(1, 0.4*cm),
-    Paragraph("Luigi Pirandello", T_SUB),
-    Spacer(1, 0.6*cm),
-    HRFlowable(width="60%", thickness=1.5, color=GOLD, spaceAfter=0.6*cm),
-    Paragraph("Portfolio Analitico per Temi", S(
-        "cvt2", fontName="DJV-S", fontSize=12, leading=16,
-        textColor=LIGHT_GOLD, alignment=TA_CENTER, spaceAfter=4)),
-    Spacer(1, 0.4*cm),
-    Paragraph(
-        "Malafede · Angoscia · Identit\u00e0 · Societ\u00e0 · Illusione · Responsabilit\u00e0",
-        S("cvtags", fontName="DJV-I", fontSize=9.5, leading=14,
-          textColor=GOLD, alignment=TA_CENTER)),
-    Spacer(1, 1.5*cm),
-    HRFlowable(width="40%", thickness=0.8, color=GOLD, spaceAfter=0.5*cm),
-    Paragraph("Analisi basata sull\u2019EPQ di Anisia Yastrzhembskiy",
-              S("cvsrc", fontName="DJV-S", fontSize=9, textColor=LIGHT_GOLD, alignment=TA_CENTER)),
-]
-
-for item in cover_content:
-    story.append(item)
-
-story.append(PageBreak())
-
-# ── TABLE OF CONTENTS ────────────────────────────────────────────────────────
-story += [
-    Spacer(1, 0.3*cm),
-    Paragraph("Indice dei Contenuti", S("toc_h", fontName="DJV-B", fontSize=16,
-              textColor=DEEP_NAVY, spaceAfter=6)),
-    hr(GOLD, 1.2),
-    Spacer(1, 0.2*cm),
-]
-
-for sec in sections:
-    story.append(Paragraph(
-        f"<b>Sezione {sec['num']}</b>\u2003{sec['toc']}",
-        TOC_S))
-
-story.append(Spacer(1, 0.5*cm))
-story.append(hr(SECTION_BG, 2))
-story.append(PageBreak())
-
-# ── SECTIONS ─────────────────────────────────────────────────────────────────
-for sec in sections:
-    story += sec_header(sec["num"], sec["title"])
-
-    for sub in sec["subs"]:
-        items = [
-            Paragraph(sub["h"], SH_HEAD),
-            Paragraph(sub["b"], BODY),
-        ]
-        for qt, src in sub.get("quotes", []):
-            items += qblock(qt, src)
-        items += evc(sub["evc"])
-        story.append(KeepTogether(items[:4]))
-        for item in items[4:]:
-            story.append(item)
-
-    story.append(PageBreak())
-
-# ── CONCLUSIONI ───────────────────────────────────────────────────────────────
-story += sec_header("—", "Conclusioni")
-story.append(Paragraph(
-    "Il percorso di Mattia Pascal attraverso il romanzo di Pirandello illustra, con una forza "
-    "narrativa che nessun trattato teorico potrebbe eguagliare, la complessit\u00e0 della "
-    "libert\u00e0 umana. L\u2019analisi condotta attraverso i sei temi individuati \u2014 "
-    "malafede, angoscia, identit\u00e0, societ\u00e0, illusione e responsabilit\u00e0 \u2014 "
-    "rivela un personaggio che \u00e8 allo stesso tempo un eroe esistenzialista classico e una "
-    "critica vivente delle sue stesse premesse.", BODY))
-story.append(Paragraph(
-    "Mattia \u00e8 condannato alla libert\u00e0 nel senso sartriano: non pu\u00f2 sfuggire "
-    "alla propria coscienza, alle proprie scelte, alla propria responsabilit\u00e0. Ma la sua "
-    "libert\u00e0 \u00e8 sempre mediata dalla faticit\u00e0 nel senso beauvoiriano: la famiglia, "
-    "i debiti, la struttura sociale del tardo Ottocento italiano definiscono i confini entro cui "
-    "la sua esistenza si svolge. Pirandello unisce queste due visioni in modo sintetico e "
-    "originale, producendo un romanzo che \u00e8 allo stesso tempo profondamente radicato nella "
-    "realt\u00e0 storica e universalmente valido come esplorazione della condizione umana.", BODY))
-story.append(Paragraph(
-    "La grandezza di <i>Il fu Mattia Pascal</i> risiede proprio in questa ambivalenza irrisolta: "
-    "Mattia non trionfa, non \u00e8 redento, non raggiunge la pace. Visita la propria tomba e "
-    "continua a vivere come un\u2019ombra tra i vivi. Ed \u00e8 forse in questa permanenza "
-    "nell\u2019incompiutezza \u2014 condannato a essere libero, ma non abbastanza da liberarsi "
-    "davvero \u2014 che il romanzo tocca la sua verit\u00e0 pi\u00f9 profonda.", BODY))
-
-story += evc(
-    "Il confronto tra Pirandello, Sartre e de Beauvoir dimostra che le grandi domande "
-    "sull\u2019identit\u00e0, la libert\u00e0 e la responsabilit\u00e0 non appartengono a un "
-    "singolo sistema filosofico. Emergono dall\u2019esperienza vissuta, dalla letteratura, "
-    "dall\u2019arte. <i>Il fu Mattia Pascal</i> anticipa di decenni le formulazioni teoriche "
-    "dell\u2019esistenzialismo, confermando che Pirandello non era solo un grande narratore, "
-    "ma anche un pensatore di straordinaria profondit\u00e0."
-)
-
-# ── BUILD ─────────────────────────────────────────────────────────────────────
-doc.build(story, onFirstPage=on_page, onLaterPages=on_page)
-print(f"PDF creato: {OUTPUT}")
+Packer.toBuffer(doc).then(buf => {
+  fs.writeFileSync("/mnt/user-data/outputs/CriterionC_AnswerGuide.docx", buf);
+  console.log("Done.");
+}).catch(e => { console.error(e); process.exit(1); });
+JSEOF
+node /home/claude/guide.js
